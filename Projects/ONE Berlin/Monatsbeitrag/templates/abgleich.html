@@ -329,9 +329,10 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
         <span class="text-slate-500 text-xs font-normal ml-1">(<span id="offene-count">{{ _aktive|length }}</span> Einträge)</span>
     </summary>
     <!-- Filter-Leiste (innerhalb der Sektion) -->
-    <form method="get" id="filter-form" class="mb-2">
+    <div class="mt-2 bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+    <form method="get" id="filter-form">
         <input type="hidden" name="konfidenz" id="konfidenz-hidden" value="{{ konfidenz_filter or '' }}">
-        <div class="flex flex-wrap gap-2 items-center px-3 py-2">
+        <div class="flex flex-wrap gap-2 items-center">
             <input type="text" name="suche" id="suche-input" value="{{ suche }}"
                    placeholder="🔍 Schüler_in suchen…"
                    oninput="filterErwartungenTableDebounced(this.value.toLowerCase().trim())"
@@ -389,7 +390,9 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
             {% endif %}
         </div>
     </form>
-    <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto split-table-wrap">
+    </div>
+
+    <div class="mt-4 bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto split-table-wrap">
         <table class="min-w-full divide-y divide-slate-100">
             <thead class="bg-slate-50">
                 <tr>
@@ -524,7 +527,8 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
     {% if freie_buchungen %}
     <div id="pos-buchungen-section">
         <!-- Zahlungen Filter-Leiste -->
-        <div class="flex flex-wrap gap-2 items-center mb-2">
+        <div class="mt-2 bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4">
+        <div class="flex flex-wrap gap-2 items-center">
             <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
                 <input type="checkbox" id="select-all-pos" onchange="toggleSelectAll('pos')" class="rounded" style="accent-color:#036dd1;">
                 Alle auswählen
@@ -545,6 +549,8 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
                         class="px-2 py-1 text-xs rounded border border-slate-300 text-slate-500 bg-slate-50 hover:bg-slate-100 zf-btn">⚪ <span class="hidden sm:inline">Ohne</span></button>
             </div>
         </div>
+        </div>
+
     <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
         <table class="min-w-full divide-y divide-slate-100" id="freie-buchungen-table">
             <thead class="bg-slate-50">
@@ -642,7 +648,8 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
     </summary>
     {% if offene_refunds %}
     <div id="neg-buchungen-section">
-        <div class="flex flex-wrap gap-2 items-center mb-2">
+        <div class="mt-2 bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4">
+        <div class="flex flex-wrap gap-2 items-center">
             <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
                 <input type="checkbox" id="select-all-neg" onchange="toggleSelectAll('neg')" class="rounded" style="accent-color:#036dd1;">
                 Alle auswählen
@@ -651,6 +658,8 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
                    oninput="filterRueckbuchungen(this.value)"
                    class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-60 ml-auto focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
         </div>
+        </div>
+
     <div class="bg-white rounded-xl shadow-sm border border-orange-200 overflow-x-auto">
         <table class="min-w-full divide-y divide-slate-100">
             <thead class="bg-orange-50">

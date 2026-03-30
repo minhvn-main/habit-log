@@ -75,9 +75,11 @@
 
 <!-- Import-Verlauf -->
 {% if batches %}
-<div class="mt-8">
-    <h2 class="text-lg font-semibold text-slate-900 mb-4">Import-Verlauf</h2>
-    <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+<div class="mt-8 bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-100">
+        <h2 class="text-lg font-semibold text-slate-900">Import-Verlauf</h2>
+    </div>
+    <div class="overflow-hidden">
         <table class="min-w-full divide-y divide-slate-100">
             <thead class="bg-slate-50">
                 <tr>
@@ -116,6 +118,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {% endif %}
