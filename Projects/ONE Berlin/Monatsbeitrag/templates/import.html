@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}CSV-Import{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<header class="bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between sticky top-0 z-10 -mx-6 -mt-6 mb-6" style="box-shadow: 0 2px 10px rgba(0,0,0,0.04);">
+    <div>
+        <h1 class="text-xl font-bold text-slate-900">CSV Import</h1>
+        <p class="text-sm text-slate-400 mt-0.5">Bankdaten importieren</p>
+    </div>
+</header>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Upload -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+        <h2 class="text-lg font-semibold text-slate-900 mb-4">CSV-Datei hochladen</h2>
+        <form method="post" action="{{ url_for('import_upload') }}" enctype="multipart/form-data">
+            <div class="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-[#036dd1] transition">
+                <svg class="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+                <div class="mt-4">
+                    <label for="csv_datei" class="cursor-pointer">
+                        <span class="text-sm font-medium" style="color:#036dd1;">Dateien auswählen</span>
+                        <input id="csv_datei" name="csv_datei" type="file" accept=".csv,.CSV" class="sr-only"
+                               multiple
+                               onchange="
+                                 const namen = Array.from(this.files).map(f => f.name).join(', ');
+                                 document.getElementById('dateiname').textContent = namen || 'Keine Datei';
+                               ">
+                    </label>
+                    <p id="dateiname" class="mt-1 text-sm text-slate-500">Keine Datei ausgewählt</p>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">Mehrere CSV-Dateien gleichzeitig möglich (SEPA + Überweisung)</p>
+            </div>
+            <button type="submit"
+                    class="mt-4 w-full px-4 py-2 text-white rounded-lg text-sm font-medium transition"
+                    style="background:#036dd1;"
+                    onmouseover="this.style.background='#0258a8'"
+                    onmouseout="this.style.background='#036dd1'">
+                Importieren &amp; Abgleich starten
+            </button>
+        </form>
+    </div>
+
+    <!-- Info -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+        <h2 class="text-lg font-semibold text-slate-900 mb-4">Hinweise</h2>
+        <ul class="space-y-3 text-sm text-slate-600">
+            <li class="flex gap-2">
+                <span class="font-bold" style="color:#036dd1;">1.</span>
+                CSVs von GLS herunterladen — <strong>beide</strong>: SEPA-Lastschriften + Überweisungen
+            </li>
+            <li class="flex gap-2">
+                <span class="font-bold" style="color:#036dd1;">2.</span>
+                Beide Dateien gleichzeitig auswählen und hochladen
+            </li>
+            <li class="flex gap-2">
+                <span class="font-bold" style="color:#036dd1;">3.</span>
+                Auto-Abgleich läuft automatisch — dann zum Abgleich-Bildschirm
+            </li>
+        </ul>
+        <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p class="text-xs text-blue-700">
+                <strong>Duplikat-Schutz:</strong> Dieselbe Datei kann mehrfach importiert werden — bereits importierte Buchungen werden übersprungen.
+            </p>
+        </div>
+        <div class="mt-3 p-3 bg-yellow-50 rounded-lg">
+            <p class="text-xs text-yellow-700">
+                <strong>Format:</strong> GLS Gemeinschaftsbank CSV (Semikolon-getrennt). Nur eingehende Zahlungen werden importiert.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Import-Verlauf -->
+{% if batches %}
+<div class="mt-8">
+    <h2 class="text-lg font-semibold text-slate-900 mb-4">Import-Verlauf</h2>
+    <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        <table class="min-w-full divide-y divide-slate-100">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Datei</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Importiert am</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">
+                        <span title="Zeilen mit positivem Betrag in der CSV (ohne Header). Unterschied zu 'Neue' = Duplikate (gleiche Buchung in zweiter CSV).">Zeilen gesamt ⓘ</span>
+                    </th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Neue Buchungen</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for b in batches %}
+                <tr class="hover:bg-slate-50 transition">
+                    <td class="px-4 py-3 text-sm text-slate-900">{{ b.dateiname }}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600">{{ b.importiert_am | format_dt }}</td>
+                    <td class="px-4 py-3 text-sm text-right text-slate-600">{{ b.zeilen_gesamt }}</td>
+                    <td class="px-4 py-3 text-sm text-right font-medium" style="color:#036dd1;">+{{ b.zeilen_neu }}</td>
+                    <td class="px-4 py-3 text-right">
+                        <div class="flex justify-end items-center gap-3">
+                            <a href="{{ url_for('import_buchungen', batch_id=b.id) }}"
+                               class="text-xs hover:underline" style="color:#036dd1;">
+                                Buchungen
+                            </a>
+                            <form method="post" action="{{ url_for('import_batch_loeschen', batch_id=b.id) }}"
+                                  onsubmit="return confirm('Import löschen? Nicht rückgängig machbar.')"
+                                  class="flex items-center">
+                                <button type="submit" class="text-xs text-red-500 hover:text-red-700">
+                                    Löschen
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

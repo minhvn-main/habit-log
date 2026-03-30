@@ -1,0 +1,2019 @@
+{% extends "base.html" %}
+{% block title %}Abgleich{% endblock %}
+
+{% block content %}
+<style>
+.vz-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vz-cell.vz-expanded { white-space: normal; overflow: visible; text-overflow: unset; }
+
+/* Row states */
+.row-confirmed     { background: #f0fdf4; border-left: 3px solid #16a34a; }
+.row-proposal-high { background: #eff6ff; border-left: 3px solid #3b82f6; }
+.row-proposal-mid  { background: #fefce8; border-left: 3px solid #eab308; }
+.row-proposal-low  { background: #fff7ed; border-left: 3px solid #f97316; }
+.row-open          { background: white;   border-left: 3px solid #e2e8f0; }
+.row-flagged       { background: #fff1f2; border-left: 3px solid #ef4444; }
+.row-partial       { background: #fff7ed; border-left: 3px solid #f97316; }
+.row-waived        { background: #f8fafc; border-left: 3px solid #cbd5e1; }
+.row-pinned        { border-left: 4px solid #ef4444 !important; }
+.match-row        { transition: background 0.12s ease; border-bottom: 1px solid rgba(0,0,0,0.04); }
+.match-row:hover  { filter: brightness(0.975); }
+
+/* Confidence badges */
+.conf-high   { background: #dcfce7; color: #15803d; font-family: 'DM Mono', monospace; }
+.conf-mid    { background: #fef9c3; color: #a16207; font-family: 'DM Mono', monospace; }
+.conf-low    { background: #f1f5f9; color: #64748b; font-family: 'DM Mono', monospace; }
+.conf-manual { background: #dbeafe; color: #1d4ed8; font-family: 'DM Mono', monospace; }
+
+/* Flag chips */
+.flag-chip     { font-family: 'DM Mono', monospace; font-size: 10px; padding: 1px 5px; border-radius: 4px; font-weight: 500; display: inline-block; }
+.flag-ok       { background: #dcfce7; color: #15803d; }
+.flag-err      { background: #fee2e2; color: #b91c1c; }
+
+/* Tabs */
+.tab-btn { border-bottom: 2px solid transparent; transition: all 0.15s; color: #64748b; }
+.tab-btn.active { border-bottom-color: #036dd1; color: #036dd1; font-weight: 600; }
+.tab-btn:hover:not(.active) { color: #334155; border-bottom-color: #e2e8f0; }
+
+/* Split view */
+#abgleich-container.split-mode .tab-text-btns { opacity: 0.4; pointer-events: none; }
+#abgleich-container.split-mode .tab-content { display: grid !important; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+#abgleich-container.split-mode #tab-erwartungen,
+#abgleich-container.split-mode #tab-buchungen { display: block !important; }
+#abgleich-container.split-mode .split-table-wrap { max-height: 65vh; overflow-y: auto; }
+#split-search-bar { display: none; }
+#abgleich-container.split-mode #split-search-bar { display: block; }
+@media (max-width: 1200px) {
+  #abgleich-container.split-mode .tab-content { display: block !important; }
+  #abgleich-container.split-mode .tab-text-btns { opacity: 1; pointer-events: auto; }
+}
+</style>
+<script>
+function toggleAllVZ(tableId) {
+    const cells = document.querySelectorAll('#' + tableId + ' .vz-cell');
+    const anyCollapsed = Array.from(cells).some(c => !c.classList.contains('vz-expanded'));
+    cells.forEach(c => c.classList.toggle('vz-expanded', anyCollapsed));
+}
+</script>
+{% set _mn = {'01':'Januar','02':'Februar','03':'März','04':'April','05':'Mai','06':'Juni','07':'Juli','08':'August','09':'September','10':'Oktober','11':'November','12':'Dezember'} %}
+{% macro fmt_monat(m) %}{% set p = m.split('-') %}{{ _mn.get(p[1], p[1]) }} {{ p[0] }}{% endmacro %}
+
+<!-- Header -->
+<header class="bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between sticky top-0 z-10 -mx-6 -mt-6 mb-6" style="box-shadow: 0 2px 10px rgba(0,0,0,0.04);">
+    <div>
+        <h1 class="text-xl font-bold text-slate-900">Beitragsabgleich</h1>
+        <p class="text-sm text-slate-400 mt-0.5">Bankbuchungen ↔ Beitragserwartungen</p>
+    </div>
+    <form method="get" action="{{ url_for('abgleich') }}" class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        <select name="monat" onchange="this.form.submit()"
+                class="text-sm font-medium text-slate-700 bg-transparent border-none outline-none">
+            <option value="" {% if alle_monate %}selected{% endif %}>Alle Monate</option>
+            {% for m in verfuegbare_monate %}
+            <option value="{{ m }}" {% if monat_filters|length == 1 and m == monat_filters[0] %}selected{% endif %}>
+                {{ fmt_monat(m) }}
+            </option>
+            {% endfor %}
+        </select>
+    </form>
+</header>
+
+<script>
+// "Alle / Keine" Toggle für Multi-Select Dropdowns
+['monat-select','status-select','kategorie-select','klasse-select'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.addEventListener('change', function() {
+        const alleOpt = this.options[0];
+        if (!alleOpt.selected) return;
+        // "Alle / Keine" wurde geklickt → toggle aller realen Optionen
+        const real = Array.from(this.options).slice(1);
+        const allSelected = real.every(o => o.selected);
+        real.forEach(o => o.selected = !allSelected);
+        alleOpt.selected = false;
+    });
+});
+// Beim Absenden: leere Option ("Alle/Keine") nie als Wert mitsenden
+document.getElementById('filter-form').addEventListener('submit', function() {
+    ['monat-select','status-select','kategorie-select','klasse-select'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) sel.options[0].selected = false;
+    });
+});
+// Globale Variablen für Filter-State
+let _suchTimer = null;
+let _erwartungenKonfidenzFilter = '{{ konfidenz_filter or "alle" }}';
+let _zahlungenKonfidenzFilter = 'alle';
+function filterErwartungenTabelle(q) {
+    document.querySelectorAll('#erwartungen-tbody tr[data-search]').forEach(row => {
+        const matchText = !q || row.dataset.search.includes(q);
+        const matchKonfidenz = _erwartungenKonfidenzFilter === 'alle' || row.dataset.konfidenz === _erwartungenKonfidenzFilter;
+        row.style.display = (matchText && matchKonfidenz) ? '' : 'none';
+    });
+}
+
+// Debounced wrapper für Live-Suche
+function filterErwartungenTableDebounced(q) {
+    clearTimeout(_suchTimer);
+    _suchTimer = setTimeout(() => {
+        filterErwartungenTabelle(q);
+    }, 200);
+}
+function filterErwartungenKonfidenz(stufe) {
+    _erwartungenKonfidenzFilter = stufe;
+    document.getElementById('konfidenz-hidden').value = stufe;
+    document.querySelectorAll('.ef-btn').forEach(b => b.classList.remove('ef-active', 'ring-2', 'ring-offset-1', 'ring-gray-400'));
+    const active = document.getElementById('ef-' + stufe);
+    if (active) active.classList.add('ef-active', 'ring-2', 'ring-offset-1', 'ring-gray-400');
+    filterErwartungenTabelle(document.getElementById('suche-input')?.value?.toLowerCase().trim() || '');
+}
+
+function setMismatchFilter(val) {
+    document.getElementById('mismatch-hidden').value = val;
+    // Neu-Styling der Buttons nach der Auswahl
+    document.querySelectorAll('.mm-btn').forEach(b => {
+        b.classList.remove('mm-active');
+        b.classList.remove('border-red-300', 'bg-red-50', 'text-red-700');
+        b.classList.remove('border-orange-300', 'bg-orange-50', 'text-orange-700');
+        b.classList.remove('border-amber-300', 'bg-amber-50', 'text-amber-700');
+        b.classList.remove('border-slate-300', 'bg-white', 'text-slate-700');
+        b.classList.add('border-slate-200', 'bg-slate-50', 'text-slate-500', 'hover:bg-slate-100');
+    });
+    const btn = document.getElementById('mm-' + (val || 'alle'));
+    if (btn) {
+        btn.classList.add('mm-active');
+        btn.classList.remove('border-slate-200', 'bg-slate-50', 'text-slate-500', 'hover:bg-slate-100');
+        if (val === '') {
+            btn.classList.add('border-slate-300', 'bg-white', 'text-slate-700');
+        } else if (val === 'betrag') {
+            btn.classList.add('border-red-300', 'bg-red-50', 'text-red-700');
+        } else if (val === 'monat') {
+            btn.classList.add('border-orange-300', 'bg-orange-50', 'text-orange-700');
+        } else if (val === 'beide') {
+            btn.classList.add('border-amber-300', 'bg-amber-50', 'text-amber-700');
+        }
+    }
+}
+
+// Stats live update nach HTMX-Swap
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    const target = e.detail.target;
+    if (!target || !target.id || !target.id.startsWith('erwartung-')) return;
+    const newRow = document.getElementById(target.id);
+    const oldStatus = target.dataset.status || '';
+    const newStatus = newRow ? (newRow.dataset.status || '') : '';
+    if (oldStatus === newStatus) return;
+
+    const ids = {offen:'stat-offen', zugeordnet:'stat-zugeordnet', teilweise:'stat-teilweise', erlassen:'stat-erlassen'};
+    for (const [st, base] of Object.entries(ids)) {
+        const valEl = document.getElementById(base + '-val');
+        if (!valEl) continue;
+        let v = parseInt(valEl.textContent || '0');
+        if (st === oldStatus) v = Math.max(0, v - 1);
+        if (st === newStatus) v = v + 1;
+        valEl.textContent = v;
+        // Immer anzeigen, auch wenn 0
+    }
+});
+</script>
+
+<!-- Aktions-Leiste -->
+<div class="flex flex-wrap gap-2 items-center mb-4 px-3 py-2.5 bg-slate-50 rounded-xl border border-slate-200">
+    <form method="post" action="{{ url_for('sammel_bestaetigen') }}" class="inline">
+        {% if not alle_monate %}<input type="hidden" name="monat" value="{{ aktueller_monat }}">{% endif %}
+        <input type="hidden" name="konfidenz_stufe" value="hoch">
+        <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap">
+            🔵 Hoch bestätigen
+        </button>
+    </form>
+    <form method="post" action="{{ url_for('sammel_bestaetigen') }}" class="inline">
+        {% if not alle_monate %}<input type="hidden" name="monat" value="{{ aktueller_monat }}">{% endif %}
+        <input type="hidden" name="konfidenz_stufe" value="mittel">
+        <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition whitespace-nowrap">
+            🟡 Mittel+ bestätigen
+        </button>
+    </form>
+    <form method="post" action="{{ url_for('auto_abgleich') }}" class="inline">
+        {% if not alle_monate %}<input type="hidden" name="monat" value="{{ aktueller_monat }}">{% endif %}
+        <button type="submit"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition whitespace-nowrap"
+                style="background:#036dd1;"
+                onmouseover="this.style.background='#0258a8'"
+                onmouseout="this.style.background='#036dd1'">
+            ⚡ Auto-Abgleich{% if alle_monate %} (alle){% else %} ({{ fmt_monat(aktueller_monat) }}){% endif %}
+        </button>
+    </form>
+    <div class="ml-auto flex items-center gap-2 pl-4 border-l border-slate-200">
+        <form method="post" action="{{ url_for('sammel_loesen') }}" class="inline"
+              onsubmit="return confirm('{% if alle_monate %}Alle Zuordnungen aller Monate lösen?{% else %}Alle Zuordnungen für {{ fmt_monat(aktueller_monat) }} lösen?{% endif %}')">
+            {% if not alle_monate %}<input type="hidden" name="monat" value="{{ aktueller_monat }}">{% endif %}
+            <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 transition whitespace-nowrap">
+                Alle lösen{% if alle_monate %} (alle Monate){% endif %}
+            </button>
+        </form>
+    </div>
+</div>
+
+<div id="abgleich-container">
+
+<!-- Tab Bar -->
+<div class="tab-bar flex items-center border-b border-slate-200 mb-5">
+    <div class="tab-text-btns flex items-center">
+        <button class="tab-btn active px-4 py-2.5 text-sm" onclick="switchTab('erwartungen', this)">
+            Erwartungen <span class="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono">{{ stats.gesamt }}</span>
+        </button>
+        <button class="tab-btn px-4 py-2.5 text-sm" onclick="switchTab('buchungen', this)">
+            Buchungen <span class="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono">{{ (freie_buchungen|length) + (offene_refunds|length) }}</span>
+        </button>
+    </div>
+    <div class="ml-auto pr-1">
+        <button id="split-btn" onclick="toggleSplit()" title="Split-Ansicht umschalten"
+                class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-100 transition-colors border border-transparent">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4H5a1 1 0 00-1 1v14a1 1 0 001 1h4M15 4h4a1 1 0 011 1v14a1 1 0 01-1 1h-4M9 4v16M15 4v16"/>
+            </svg>
+            Split
+        </button>
+    </div>
+</div>
+
+<!-- Konfidenz-Legende (über Tab-Leiste) -->
+<details class="mb-3 text-xs group" id="konfidenz-legende-details">
+    <summary class="cursor-pointer select-none inline-flex items-center gap-1 text-slate-400 hover:text-slate-600 mb-1.5">
+        <svg class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        ⓘ Konfidenz-Legende
+    </summary>
+    <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-600">
+        <div class="grid grid-cols-4 gap-x-4 gap-y-0.5 text-xs">
+            <div>
+                <div class="font-semibold text-blue-700 mb-1">🔵 Hoch (≥ 80)</div>
+                <div class="text-slate-500 space-y-0.5">
+                    <div>100 — SEPA+IBAN</div>
+                    <div>95 — Mandatsreferenz</div>
+                    <div>90 — IBAN+Name (VZ)</div>
+                    <div>85 — Gelernt</div>
+                </div>
+            </div>
+            <div>
+                <div class="font-semibold text-yellow-700 mb-1">🟡 Mittel (60–79)</div>
+                <div class="text-slate-500 space-y-0.5">
+                    <div>75 — IBAN+Name (verteilt)</div>
+                    <div>70 — Name (Auftraggeber)</div>
+                    <div>70 — Name (VZ)</div>
+                    <div>65 — Kontoinhaber</div>
+                </div>
+            </div>
+            <div>
+                <div class="font-semibold text-orange-600 mb-1">🟠 Niedrig (&lt; 60)</div>
+                <div class="text-slate-500 space-y-0.5">
+                    <div>Schwache Treffer</div>
+                </div>
+            </div>
+            <div>
+                <div class="font-semibold text-indigo-700 mb-1">✓ Manuell</div>
+                <div class="text-slate-500 space-y-0.5">
+                    <div>100 — Manuell zugeordnet</div>
+                </div>
+                <div class="mt-2 text-slate-400 text-xs leading-snug">
+                    <div>€✓/€✗ = Betrag stimmt/weicht ab</div>
+                    <div>📅✓/📅✗ = Monat stimmt/weicht ab</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</details>
+
+<!-- Split Search Bar (nur in Split-Ansicht sichtbar) -->
+<div id="split-search-bar" class="mb-3">
+    <input id="split-suche" type="text" placeholder="🔍 Schüler suchen (beide Tabellen)…"
+           oninput="filterSplit(this.value)"
+           class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+</div>
+
+<div class="tab-content">
+<div id="tab-erwartungen">
+
+<!-- Stats + Konfidenz-Filter -->
+<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-500 items-center bg-slate-50 rounded-xl border border-slate-200 px-3 py-2" id="stats-leiste">
+        <span>Gesamt: <span class="font-medium text-slate-700" id="stat-gesamt-val">{{ stats.gesamt }}</span></span>
+        <span id="stat-zugeordnet-wrap">Bezahlt: <span class="font-medium text-green-600" id="stat-zugeordnet-val">{{ stats.zugeordnet }}</span></span>
+        <span id="stat-offen-wrap">Offen: <span class="font-medium text-slate-700" id="stat-offen-val">{{ stats.offen }}</span></span>
+        <span id="stat-teilweise-wrap">Teilw.: <span class="font-medium text-orange-500" id="stat-teilweise-val">{{ stats.teilweise }}</span></span>
+        <span id="stat-erlassen-wrap">Erlassen: <span class="font-medium text-slate-400" id="stat-erlassen-val">{{ stats.erlassen }}</span></span>
+    </div>
+    <!-- Konfidenz-Filter mit Anzahl -->
+    <div class="flex flex-wrap gap-1 items-center">
+        <button type="button" onclick="filterErwartungenKonfidenz('alle')" id="ef-alle"
+                class="px-2 py-0.5 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50 font-medium ef-btn ef-active">Alle</button>
+        <button type="button" onclick="filterErwartungenKonfidenz('hoch')" id="ef-hoch"
+                class="px-2 py-0.5 text-xs rounded border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 ef-btn">🔵 Hoch{% if stats.vorschlag_hoch %} <span class="opacity-70">({{ stats.vorschlag_hoch }})</span>{% endif %}</button>
+        <button type="button" onclick="filterErwartungenKonfidenz('mittel')" id="ef-mittel"
+                class="px-2 py-0.5 text-xs rounded border border-yellow-300 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 ef-btn">🟡 Mittel{% if stats.vorschlag_mittel %} <span class="opacity-70">({{ stats.vorschlag_mittel }})</span>{% endif %}</button>
+        <button type="button" onclick="filterErwartungenKonfidenz('niedrig')" id="ef-niedrig"
+                class="px-2 py-0.5 text-xs rounded border border-orange-300 text-orange-500 bg-orange-50 hover:bg-orange-100 ef-btn">🟠 Niedrig{% if stats.vorschlag_niedrig %} <span class="opacity-70">({{ stats.vorschlag_niedrig }})</span>{% endif %}</button>
+        <button type="button" onclick="filterErwartungenKonfidenz('ohne')" id="ef-ohne"
+                class="px-2 py-0.5 text-xs rounded border border-slate-300 text-slate-500 bg-slate-50 hover:bg-slate-100 ef-btn">⚪ Ohne{% if stats.vorschlag_ohne %} <span class="opacity-70">({{ stats.vorschlag_ohne }})</span>{% endif %}</button>
+    </div>
+</div>
+
+<!-- Abgleich-Tabelle (mit Collapsible Offene) -->
+<details open id="offene-details" class="mb-4">
+    <summary class="flex items-center gap-2 cursor-pointer select-none text-sm font-medium text-slate-600 hover:text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 group">
+        <svg class="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        <span class="text-slate-700">Offene & Proposals</span>
+        <span class="text-slate-500 text-xs font-normal ml-1">(<span id="offene-count">{{ _aktive|length }}</span> Einträge)</span>
+    </summary>
+    <!-- Filter-Leiste (innerhalb der Sektion) -->
+    <form method="get" id="filter-form" class="mb-2">
+        <input type="hidden" name="konfidenz" id="konfidenz-hidden" value="{{ konfidenz_filter or '' }}">
+        <div class="flex flex-wrap gap-2 items-center px-3 py-2">
+            <input type="text" name="suche" id="suche-input" value="{{ suche }}"
+                   placeholder="🔍 Schüler_in suchen…"
+                   oninput="filterErwartungenTableDebounced(this.value.toLowerCase().trim())"
+                   class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-40 focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+            <select name="monat" multiple size="1" id="monat-select"
+                    class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm min-w-[130px] focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+                <option value="" id="monat-alle-opt" {% if not monat_filters %}selected{% endif %}>Alle Monate</option>
+                {% for m in verfuegbare_monate %}
+                <option value="{{ m }}" {% if m in monat_filters %}selected{% endif %}>{{ fmt_monat(m) }}</option>
+                {% endfor %}
+            </select>
+            <select name="status" multiple size="1" id="status-select"
+                    class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm min-w-[120px] focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+                <option value="" id="status-alle-opt" {% if not status_filters %}selected{% endif %}>Alle Status</option>
+                <option value="offen"      {% if 'offen'      in status_filters %}selected{% endif %}>Offen</option>
+                <option value="teilweise"  {% if 'teilweise'  in status_filters %}selected{% endif %}>⚠ Teilweise</option>
+                <option value="zugeordnet" {% if 'zugeordnet' in status_filters %}selected{% endif %}>Bezahlt</option>
+                <option value="markiert"   {% if 'markiert'   in status_filters %}selected{% endif %}>⚑ Markiert</option>
+                <option value="erlassen"   {% if 'erlassen'   in status_filters %}selected{% endif %}>Erlassen</option>
+            </select>
+            <select name="klasse" multiple size="1" id="klasse-select"
+                    class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm min-w-[120px] focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+                <option value="" id="klasse-alle-opt" {% if not klasse_filters %}selected{% endif %}>Alle Klassen</option>
+                {% for k in klassen %}
+                <option value="{{ k }}" {% if k in klasse_filters %}selected{% endif %}>{{ k }}</option>
+                {% endfor %}
+            </select>
+            <select name="alterskategorie" multiple size="1" id="kategorie-select"
+                    class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm min-w-[110px] focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+                <option value="" id="kategorie-alle-opt" {% if not alterskategorie_filters %}selected{% endif %}>Alle Kategorien</option>
+                {% for a in alterskategorien %}
+                <option value="{{ a }}" {% if a in alterskategorie_filters %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+            <div class="flex gap-1">
+                <input type="hidden" name="mismatch" id="mismatch-hidden" value="{{ mismatch_filter or '' }}">
+                <button type="button" onclick="setMismatchFilter('')" id="mm-alle"
+                        class="px-2 py-1 text-xs rounded border font-medium mm-btn {% if not mismatch_filter %}mm-active{% endif %} {% if not mismatch_filter %}border-slate-300 bg-white text-slate-700{% else %}border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100{% endif %}">Alle</button>
+                <button type="button" onclick="setMismatchFilter('betrag')" id="mm-betrag"
+                        class="px-2 py-1 text-xs rounded border font-medium mm-btn {% if mismatch_filter == 'betrag' %}mm-active{% endif %} {% if mismatch_filter == 'betrag' %}border-red-300 bg-red-50 text-red-700{% else %}border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100{% endif %}">€✗</button>
+                <button type="button" onclick="setMismatchFilter('monat')" id="mm-monat"
+                        class="px-2 py-1 text-xs rounded border font-medium mm-btn {% if mismatch_filter == 'monat' %}mm-active{% endif %} {% if mismatch_filter == 'monat' %}border-orange-300 bg-orange-50 text-orange-700{% else %}border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100{% endif %}">📅✗</button>
+                <button type="button" onclick="setMismatchFilter('beide')" id="mm-beide"
+                        class="px-2 py-1 text-xs rounded border font-medium mm-btn {% if mismatch_filter == 'beide' %}mm-active{% endif %} {% if mismatch_filter == 'beide' %}border-amber-300 bg-amber-50 text-amber-700{% else %}border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100{% endif %}">€+📅</button>
+            </div>
+            <button type="submit"
+                    class="px-3 py-1.5 text-white rounded-lg text-sm font-medium transition"
+                    style="background:#036dd1;"
+                    onmouseover="this.style.background='#0258a8'"
+                    onmouseout="this.style.background='#036dd1'">
+                Filtern
+            </button>
+            {% if suche or status_filters or klasse_filters or alterskategorie_filters or alle_monate or mismatch_filter or konfidenz_filter %}
+            <a href="{{ url_for('abgleich') }}" class="text-sm text-slate-400 hover:text-slate-600 underline">Zurücksetzen</a>
+            {% endif %}
+        </div>
+    </form>
+    <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto split-table-wrap">
+        <table class="min-w-full divide-y divide-slate-100">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase whitespace-nowrap" style="min-width:120px">
+                    {% set _next_dir = 'desc' if (sort_field == 'name' and sort_dir == 'asc') else 'asc' %}
+                    <a href="{{ url_for('abgleich', sort='name', dir=_next_dir, monat=monat_filters, status=status_filters, klasse=klasse_filters, alterskategorie=alterskategorie_filters, suche=suche, mismatch=mismatch_filter) }}"
+                       class="flex items-center gap-1 hover:text-slate-700 {% if sort_field == 'name' %}text-slate-700{% endif %}">
+                        Schüler / Klasse {% if sort_field == 'name' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}
+                    </a>
+                </th>
+                <th class="w-6"></th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase whitespace-nowrap">
+                    Buchung
+                </th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase whitespace-nowrap">
+                    Erwartet
+                </th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase whitespace-nowrap">
+                    {% set _next_dir = 'desc' if (sort_field == 'konfidenz' and sort_dir == 'asc') else 'asc' %}
+                    <a href="{{ url_for('abgleich', sort='konfidenz', dir=_next_dir, monat=monat_filters, status=status_filters, klasse=klasse_filters, alterskategorie=alterskategorie_filters, suche=suche, mismatch=mismatch_filter) }}"
+                       class="flex items-center gap-1 hover:text-slate-700 {% if sort_field == 'konfidenz' %}text-slate-700{% endif %}">
+                        Konfidenz {% if sort_field == 'konfidenz' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}
+                    </a>
+                </th>
+                <th class="px-2 py-3 text-left text-xs font-medium text-slate-500 uppercase whitespace-nowrap">Flags</th>
+                <th class="px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase whitespace-nowrap">Aktionen</th>
+            </tr>
+        </thead>
+        {% if 'zugeordnet' in status_filters %}
+            {% set _aktive = erwartungen %}
+            {% set _zugeordnete = [] %}
+        {% else %}
+            {% set _aktive = erwartungen | rejectattr('status', 'equalto', 'zugeordnet') | list %}
+            {% set _zugeordnete = erwartungen | selectattr('status', 'equalto', 'zugeordnet') | list %}
+        {% endif %}
+        <tbody class="divide-y divide-slate-100" id="erwartungen-tbody">
+            {% for e in _aktive %}
+            {% set _e_best_z = e.zuordnungen.filter_by(bestaetigt=True).first() %}
+            {% set _e_top_z = _e_best_z or (e.zuordnungen.filter_by(bestaetigt=False).all() | sort(attribute='konfidenz', reverse=True) | first) %}
+            {% if e.status == 'zugeordnet' %}{% set _row_state = 'row-confirmed' %}
+            {% elif e.status == 'teilweise' %}{% set _row_state = 'row-partial' %}
+            {% elif e.status == 'markiert' %}{% set _row_state = 'row-flagged' %}
+            {% elif e.status == 'erlassen' %}{% set _row_state = 'row-waived' %}
+            {% elif _e_top_z and _e_top_z.konfidenz >= 80 %}{% set _row_state = 'row-proposal-high' %}
+            {% elif _e_top_z and _e_top_z.konfidenz >= 60 %}{% set _row_state = 'row-proposal-mid' %}
+            {% elif _e_top_z %}{% set _row_state = 'row-proposal-low' %}
+            {% else %}{% set _row_state = 'row-open' %}
+            {% endif %}
+            <tr id="erwartung-{{ e.id }}"
+                data-status="{{ e.status }}"
+                data-konfidenz="{% if _e_top_z %}{% if _e_top_z.konfidenz >= 80 %}hoch{% elif _e_top_z.konfidenz >= 60 %}mittel{% else %}niedrig{% endif %}{% else %}ohne{% endif %}"
+                class="match-row {{ _row_state }}{% if e.gepinnt %} row-pinned{% endif %}"
+                data-search="{{ e.schueler.voller_name | lower }} {{ (e.schueler.klasse or '') | lower }} {{ (e.schueler.sheet_id or '') | lower }} {{ e.monat }} {{ (e.schueler.kontoinhaber or '') | lower }}">
+                {% include "_erwartung_zeile_inhalt.html" %}
+            </tr>
+            {% endfor %}
+            {% if not _aktive %}
+            <tr>
+                <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">
+                    Keine Beitragserwartungen gefunden.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+    </div>
+</details>
+
+<!-- Zugeordnete Beiträge (eingeklappt) -->
+{% if _zugeordnete %}
+<details class="mt-4 group" id="zugeordnete-details">
+    <summary class="flex items-center gap-2 cursor-pointer select-none text-sm font-medium text-slate-600 hover:text-slate-800 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+        <svg class="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        <span class="text-green-800">✓ Bezahlte Beiträge ({{ _zugeordnete|length }})</span>
+        <span class="text-green-600 text-xs font-normal">— aufklappen zum Einsehen</span>
+    </summary>
+    <div class="mt-2 bg-white rounded-xl shadow-sm border border-green-100 overflow-x-auto split-table-wrap">
+        <table class="min-w-full divide-y divide-slate-100">
+            <thead class="bg-green-50">
+                <tr>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase" style="min-width:120px">Schüler / Klasse</th>
+                    <th class="w-6"></th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase">Buchung</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase">Erwartet</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase">Konfidenz</th>
+                    <th class="px-2 py-3 text-left text-xs font-medium text-slate-500 uppercase">Flags</th>
+                    <th class="px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for e in _zugeordnete %}
+                <tr id="erwartung-{{ e.id }}" class="match-row row-confirmed{% if e.gepinnt %} row-pinned{% endif %} opacity-90">
+                    {% include "_erwartung_zeile_inhalt.html" %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</details>
+{% endif %}
+
+</div><!-- end tab-erwartungen -->
+
+<div id="tab-buchungen" style="display:none">
+
+<!-- Statistik-Übersicht Buchungen -->
+<div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-500 items-center mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+    <span>Zahlungen: <span class="font-medium text-slate-700">{{ (freie_buchungen|length) + (zugeordnete_buchungen|length) }}</span></span>
+    <span>Zugeordnet: <span class="font-medium text-green-600">{{ zugeordnete_buchungen|length }}</span></span>
+    <span>Offen: <span class="font-medium text-slate-700">{{ freie_buchungen|length }}</span></span>
+    <span>Rückbuchungen: <span class="font-medium text-red-600">{{ offene_refunds|length }}</span></span>
+    <span>Ignoriert: <span class="font-medium text-slate-400">{{ negierte_buchungen|length }}</span></span>
+</div>
+
+<!-- Nicht zugeordnete Zahlungen (positiv) -->
+{% if freie_buchungen %}
+{% set ns_b = namespace(hoch=0, mittel=0, niedrig=0, ohne=0) %}
+{% for b in freie_buchungen %}
+{% set _vk = b.zuordnungen.filter_by(bestaetigt=False).first() %}
+{% if _vk %}{% if _vk.konfidenz >= 80 %}{% set ns_b.hoch = ns_b.hoch + 1 %}{% elif _vk.konfidenz >= 60 %}{% set ns_b.mittel = ns_b.mittel + 1 %}{% else %}{% set ns_b.niedrig = ns_b.niedrig + 1 %}{% endif %}{% else %}{% set ns_b.ohne = ns_b.ohne + 1 %}{% endif %}
+{% endfor %}
+{% endif %}
+<details {% if freie_buchungen %}open{% endif %} class="mt-4 group" id="pos-buchungen-details">
+    <summary class="flex items-center gap-2 cursor-pointer select-none mb-1">
+        <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        <h2 class="text-lg font-semibold text-slate-900">Nicht zugeordnete Zahlungen ({{ freie_buchungen|length }})</h2>
+    </summary>
+    {% if freie_buchungen %}
+    <div id="pos-buchungen-section">
+        <!-- Zahlungen Filter-Leiste -->
+        <div class="flex flex-wrap gap-2 items-center mb-2">
+            <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
+                <input type="checkbox" id="select-all-pos" onchange="toggleSelectAll('pos')" class="rounded" style="accent-color:#036dd1;">
+                Alle auswählen
+            </label>
+            <input type="text" id="buchungen-suche" placeholder="Auftraggeber, Verwendungszweck…"
+                   oninput="filterFreieBuchungen(this.value)"
+                   class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-60 focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+            <div class="flex gap-1 ml-auto">
+                <button type="button" onclick="filterZahlungenKonfidenz('alle')" id="zf-alle"
+                        class="px-2 py-1 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50 font-medium zf-btn zf-active">Alle</button>
+                <button type="button" onclick="filterZahlungenKonfidenz('hoch')" id="zf-hoch"
+                        class="px-2 py-1 text-xs rounded border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 zf-btn">🔵 <span class="hidden sm:inline">Hoch</span></button>
+                <button type="button" onclick="filterZahlungenKonfidenz('mittel')" id="zf-mittel"
+                        class="px-2 py-1 text-xs rounded border border-yellow-300 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 zf-btn">🟡 <span class="hidden sm:inline">Mittel</span></button>
+                <button type="button" onclick="filterZahlungenKonfidenz('niedrig')" id="zf-niedrig"
+                        class="px-2 py-1 text-xs rounded border border-orange-300 text-orange-600 bg-orange-50 hover:bg-orange-100 zf-btn">🟠 <span class="hidden sm:inline">Niedrig</span></button>
+                <button type="button" onclick="filterZahlungenKonfidenz('ohne')" id="zf-ohne"
+                        class="px-2 py-1 text-xs rounded border border-slate-300 text-slate-500 bg-slate-50 hover:bg-slate-100 zf-btn">⚪ <span class="hidden sm:inline">Ohne</span></button>
+            </div>
+        </div>
+    <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-100" id="freie-buchungen-table">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-3 py-3 w-8"></th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-24">Datum</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-40">Auftraggeber</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Verwendungszweck</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Betrag</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-28">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for b in freie_buchungen %}
+                {% set _hat_vorschlag = b.zuordnungen.filter_by(bestaetigt=False).first() %}
+                <tr id="buchung-{{ b.id }}"
+                    class="{% if b.gepinnt %}border-l-4 border-red-500{% elif _hat_vorschlag %}{% if _hat_vorschlag.konfidenz >= 80 %}border-l-4 border-blue-400 bg-blue-50{% elif _hat_vorschlag.konfidenz >= 60 %}border-l-4 border-yellow-400 bg-yellow-50{% else %}border-l-4 border-orange-400 bg-orange-50{% endif %}{% else %}border-l-4 border-slate-200 bg-white{% endif %} hover:bg-slate-50 transition"
+                    data-group="pos"
+                    data-konfidenz="{% if _hat_vorschlag %}{% if _hat_vorschlag.konfidenz >= 80 %}hoch{% elif _hat_vorschlag.konfidenz >= 60 %}mittel{% else %}niedrig{% endif %}{% else %}ohne{% endif %}"
+                    data-search="{{ (b.auftraggeber or '') | lower }} {{ (b.verwendungszweck or '') | lower }} {{ b.buchungstag.strftime('%d.%m.%Y') }}{% if _hat_vorschlag %} {{ _hat_vorschlag.erwartung.schueler.voller_name | lower }} {{ (_hat_vorschlag.erwartung.schueler.kontoinhaber or '') | lower }}{% endif %}">
+                    <td class="px-3 py-3">
+                        <input type="checkbox" class="buchung-checkbox rounded" value="{{ b.id }}" onchange="updateBatchBar()">
+                    </td>
+                    <td class="px-4 py-3 text-sm {% if _hat_vorschlag and _hat_vorschlag.monat_stimmt == False %}text-red-600 font-medium{% else %}text-slate-900{% endif %} whitespace-nowrap">
+                        {{ b.buchungstag.strftime('%d.%m.%Y') }}
+                        {% if _hat_vorschlag and _hat_vorschlag.monat_stimmt == False %}
+                        <div class="text-xs font-normal mt-0.5" title="Monat stimmt nicht überein: erwartet {{ _hat_vorschlag.erwartung.monat }}">≠ {{ _hat_vorschlag.erwartung.monat }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-slate-900 overflow-hidden">
+                        <div class="truncate">{{ b.auftraggeber or '—' }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-slate-500">
+                        <div class="line-clamp-2">{{ b.verwendungszweck or '—' }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap">
+                        <span class="{% if _hat_vorschlag and _hat_vorschlag.betrag_stimmt == False %}text-red-600{% else %}text-green-700{% endif %}">+{{ "%.2f"|format(b.betrag) }} €</span>
+                        {% if _hat_vorschlag and _hat_vorschlag.betrag_stimmt == False %}
+                        <div class="text-xs font-medium text-red-500 mt-0.5" title="Betrag stimmt nicht überein">≠ {{ "%.2f"|format(_hat_vorschlag.erwartung.erwarteter_betrag) }} €</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <div class="flex justify-end gap-1 items-center">
+                            <button type="button"
+                                    onclick="togglePinBuchung({{ b.id }}, this)"
+                                    class="p-1.5 {% if b.gepinnt %}text-red-500{% else %}text-slate-300 hover:text-red-400{% endif %} rounded"
+                                    data-gepinnt="{{ '1' if b.gepinnt else '0' }}"
+                                    title="{% if b.gepinnt %}Flag entfernen{% else %}Flaggen{% endif %}">
+                                <svg class="w-4 h-4" fill="{% if b.gepinnt %}currentColor{% else %}none{% endif %}" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6H10.5l-1-1H5a2 2 0 00-2 2zm0 0h2.5"/>
+                                </svg>
+                            </button>
+                            <button type="button"
+                                    onclick='openBuchungZuordnen({{ b.id }}, {{ b.auftraggeber | tojson }}, {{ b.betrag }}, {% if _hat_vorschlag %}{{ {"name": _hat_vorschlag.erwartung.schueler.voller_name, "kontoinhaber": (_hat_vorschlag.erwartung.schueler.kontoinhaber or ""), "klasse": (_hat_vorschlag.erwartung.schueler.klasse or ""), "sheet_id": (_hat_vorschlag.erwartung.schueler.sheet_id or "")} | tojson }}{% else %}null{% endif %})'
+                                    class="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded"
+                                    title="Einer Erwartung zuordnen">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                                </svg>
+                            </button>
+                            <button type="button"
+                                    onclick='openLinkZuNegativDialog({{ b.id }}, {{ b.auftraggeber | tojson }}, {{ b.betrag }})'
+                                    class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded"
+                                    title="Mit Rückbuchung verlinken">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                                </svg>
+                            </button>
+                            <button type="button"
+                                    onclick='openNegierenDialog({{ b.id }}, {{ b.auftraggeber | tojson }}, {{ b.betrag }})'
+                                    class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                    title="Ignorieren">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    </div>
+    {% endif %}
+</details>
+
+<!-- Nicht zugeordnete Beträge (negativ) -->
+<details {% if offene_refunds %}open{% endif %} class="mt-6 group" id="neg-buchungen-details">
+    <summary class="flex items-center gap-2 cursor-pointer select-none mb-1">
+        <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        <h2 class="text-lg font-semibold text-slate-900">Offene Abbuchungen ({{ offene_refunds|length }})</h2>
+    </summary>
+    {% if offene_refunds %}
+    <div id="neg-buchungen-section">
+        <div class="flex flex-wrap gap-2 items-center mb-2">
+            <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
+                <input type="checkbox" id="select-all-neg" onchange="toggleSelectAll('neg')" class="rounded" style="accent-color:#036dd1;">
+                Alle auswählen
+            </label>
+            <input type="text" id="refunds-suche" placeholder="Auftraggeber, Verwendungszweck…"
+                   oninput="filterRueckbuchungen(this.value)"
+                   class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-60 ml-auto focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+        </div>
+    <div class="bg-white rounded-xl shadow-sm border border-orange-200 overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-100">
+            <thead class="bg-orange-50">
+                <tr>
+                    <th class="px-3 py-3 w-8"></th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-24">Datum</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-40">Auftraggeber</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Verwendungszweck</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Betrag</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-28">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for b in offene_refunds %}
+                <tr id="buchung-{{ b.id }}"
+                    class="{% if b.gepinnt %}border-l-4 border-red-500{% else %}border-l-4 border-orange-300{% endif %} hover:bg-slate-50 transition"
+                    data-group="neg"
+                    data-search="{{ (b.auftraggeber or '') | lower }} {{ (b.verwendungszweck or '') | lower }} {{ b.buchungstag.strftime('%d.%m.%Y') }}">
+                    <td class="px-3 py-3">
+                        <input type="checkbox" class="buchung-checkbox rounded" value="{{ b.id }}" onchange="updateBatchBar()" style="accent-color:#036dd1;">
+                    </td>
+                    <td class="px-4 py-3 text-sm text-slate-900 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                    <td class="px-4 py-3 text-sm text-slate-900 overflow-hidden">
+                        <div class="truncate">{{ b.auftraggeber or '—' }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-slate-500">
+                        <div class="whitespace-normal break-words">{{ b.verwendungszweck or '—' }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-right font-medium text-red-600 whitespace-nowrap">{{ "%.2f"|format(b.betrag) }} €</td>
+                    <td class="px-4 py-3 text-right">
+                        <div class="flex justify-end gap-1 items-center">
+                            <button type="button"
+                                    onclick="togglePinBuchung({{ b.id }}, this)"
+                                    class="p-1.5 {% if b.gepinnt %}text-red-500{% else %}text-slate-300 hover:text-red-400{% endif %} rounded"
+                                    data-gepinnt="{{ '1' if b.gepinnt else '0' }}"
+                                    title="{% if b.gepinnt %}Flag entfernen{% else %}Flaggen{% endif %}">
+                                <svg class="w-4 h-4" fill="{% if b.gepinnt %}currentColor{% else %}none{% endif %}" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6H10.5l-1-1H5a2 2 0 00-2 2zm0 0h2.5"/>
+                                </svg>
+                            </button>
+                            <button type="button"
+                                    onclick='openRefundLinkDialog({{ b.id }}, {{ b.auftraggeber | tojson }}, {{ b.betrag }})'
+                                    class="p-1.5 text-slate-400 hover:text-[#036dd1] hover:bg-blue-50 rounded"
+                                    title="Mit positiver Zahlung verlinken">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                                </svg>
+                            </button>
+                            <button type="button"
+                                    onclick='openNegierenDialog({{ b.id }}, {{ b.auftraggeber | tojson }}, {{ b.betrag }})'
+                                    class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                    title="Ignorieren">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    </div>
+    {% endif %}
+</details>
+
+<!-- Verknüpfte Abbuchungen (Refund ↔ Original, aufklappbar) -->
+{% if verlinkte_refunds %}
+<div class="mt-6">
+    <details>
+        <summary class="text-sm font-medium text-slate-600 cursor-pointer hover:text-slate-800">
+            Verknüpfte Abbuchungen ({{ verlinkte_refunds|length }}) — aufklappen
+        </summary>
+        <div class="mt-3 bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-100">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Neg. Betrag</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Auftraggeber</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Verwendungszweck</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-400">↔</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Orig. Zahlung</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Auftraggeber (orig)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Verwendungszweck (orig)</th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Aktion</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100" id="verlinkt-tbody">
+                    {% for r in verlinkte_refunds %}
+                    {% set abw = r.betrag + r.refund_of.betrag %}
+                    <tr id="verlinkt-{{ r.id }}" class="{% if abw | abs > 0.01 %}bg-amber-50{% endif %}">
+                        <td class="px-4 py-2 text-sm font-medium text-red-600 whitespace-nowrap">
+                            {{ "%.2f"|format(r.betrag) }} €
+                            <span class="block text-xs font-normal text-slate-400">{{ r.buchungstag.strftime('%d.%m.%Y') }}</span>
+                        </td>
+                        <td class="px-4 py-2 text-sm text-slate-700 whitespace-nowrap">{{ r.auftraggeber or '—' }}</td>
+                        <td class="px-4 py-2 text-sm text-slate-500 max-w-[220px] vz-cell cursor-pointer" onclick="this.classList.toggle('vz-expanded')">{{ r.verwendungszweck or '—' }}</td>
+                        <td class="px-4 py-2 text-center text-slate-300">↔</td>
+                        <td class="px-4 py-2 text-sm font-medium text-green-700 whitespace-nowrap">
+                            +{{ "%.2f"|format(r.refund_of.betrag) }} €
+                            <span class="block text-xs font-normal text-slate-400">{{ r.refund_of.buchungstag.strftime('%d.%m.%Y') }}</span>
+                        </td>
+                        <td class="px-4 py-2 text-sm text-slate-700 whitespace-nowrap">
+                            {{ r.refund_of.auftraggeber or '—' }}
+                            {% if abw | abs > 0.01 %}
+                            <span class="block text-xs text-amber-600 font-medium">Abweichung: {{ "%.2f"|format(abw) }} €</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-sm text-slate-500 max-w-[220px] vz-cell cursor-pointer" onclick="this.classList.toggle('vz-expanded')">{{ r.refund_of.verwendungszweck or '—' }}</td>
+                        <td class="px-4 py-2 text-right">
+                            <button type="button"
+                                    onclick='unlinkRefund({{ r.id }}, {{ r.auftraggeber | tojson }}, {{ r.betrag }})'
+                                    class="px-2 py-1 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-300 rounded-lg">
+                                Lösen
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+</div>
+{% endif %}
+
+<!-- Ignorierte Buchungen (Audit-Trail, collapsible) -->
+<div class="mt-6" id="ignoriert-section">
+    <details id="ignoriert-details">
+        <summary class="text-sm font-medium text-slate-500 cursor-pointer hover:text-slate-700">
+            Ignorierte Buchungen (<span id="ignoriert-count">{{ negierte_buchungen|length }}</span>) — aufklappen
+        </summary>
+        <div class="mt-3 bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-100">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase w-24">Datum</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase w-36">Auftraggeber</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Verwendungszweck</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase w-32">Notiz</th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-slate-400 uppercase w-20">Betrag</th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-slate-400 uppercase w-24">Aktion</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100" id="ignoriert-tbody">
+                    {% for b in negierte_buchungen %}
+                    <tr class="opacity-60" id="ignoriert-{{ b.id }}">
+                        <td class="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                        <td class="px-4 py-2 text-xs text-slate-600 max-w-[140px] truncate">{{ b.auftraggeber or '—' }}</td>
+                        <td class="px-4 py-2 text-xs text-slate-400 max-w-[220px] truncate">{{ b.verwendungszweck or '—' }}</td>
+                        <td class="px-4 py-2 text-xs text-slate-400 italic max-w-[120px] truncate">{{ b.notiz or '—' }}</td>
+                        <td class="px-4 py-2 text-xs text-right {% if b.betrag > 0 %}text-slate-500{% else %}text-red-400{% endif %} whitespace-nowrap">
+                            {{ "%.2f"|format(b.betrag) }} €
+                        </td>
+                        <td class="px-4 py-2 text-right">
+                            <button type="button"
+                                    onclick="reaktiviereBuchung({{ b.id }})"
+                                    class="px-2 py-1 text-xs text-slate-400 hover:text-green-700 hover:bg-green-50 border border-slate-100 hover:border-green-200 rounded-lg">
+                                Reaktivieren
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+</div>
+
+<!-- Zugeordnete Buchungen (eingeklappt) -->
+{% if zugeordnete_buchungen %}
+<div class="mt-6">
+    <details>
+        <summary class="text-sm font-medium text-slate-600 cursor-pointer hover:text-slate-800">
+            Zugeordnete Buchungen ({{ zugeordnete_buchungen|length }}) — aufklappen
+        </summary>
+        <div class="mt-3 bg-white rounded-xl shadow-sm border border-green-200 overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-100" id="zugeordnete-buchungen-table">
+                <thead class="bg-green-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-24">Datum</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Auftraggeber</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:text-slate-700"
+                            onclick="toggleAllVZ('zugeordnete-buchungen-table')" title="Klicken zum Auf-/Zuklappen">
+                            Verwendungszweck <span class="text-slate-400">↕</span>
+                        </th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Betrag</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Zugeordnet zu</th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Aktionen</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for b in zugeordnete_buchungen %}
+                    {% set _bz = b.zuordnungen.filter_by(bestaetigt=True).first() %}
+                    <tr id="buchung-{{ b.id }}" class="{% if b.gepinnt %}border-l-4 border-red-500 {% endif %}bg-green-50 opacity-90">
+                        <td class="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                        <td class="px-4 py-2 text-sm text-slate-700">{{ b.auftraggeber or '—' }}</td>
+                        <td class="px-4 py-2 text-sm text-slate-500 max-w-[260px] vz-cell cursor-pointer"
+                            onclick="this.classList.toggle('vz-expanded')">{{ b.verwendungszweck or '—' }}</td>
+                        <td class="px-4 py-2 text-sm text-right font-medium text-green-700 whitespace-nowrap">+{{ "%.2f"|format(b.betrag) }} €</td>
+                        <td class="px-4 py-2 text-sm text-slate-600">
+                            {% for z in b.zuordnungen.filter_by(bestaetigt=True).all() %}
+                            <div>{{ z.erwartung.schueler.voller_name }} · {{ z.erwartung.monat }}</div>
+                            {% endfor %}
+                        </td>
+                        <td class="px-4 py-2 text-right">
+                            <div class="flex justify-end gap-1 items-center">
+                                <button type="button"
+                                        onclick="togglePinBuchung({{ b.id }}, this)"
+                                        class="p-1.5 {% if b.gepinnt %}text-red-500{% else %}text-slate-300 hover:text-red-400{% endif %} rounded"
+                                        data-gepinnt="{{ '1' if b.gepinnt else '0' }}"
+                                        title="{% if b.gepinnt %}Flag entfernen{% else %}Flaggen{% endif %}">
+                                    <svg class="w-4 h-4" fill="{% if b.gepinnt %}currentColor{% else %}none{% endif %}" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6H10.5l-1-1H5a2 2 0 00-2 2zm0 0h2.5"/>
+                                    </svg>
+                                </button>
+                                {% if _bz %}
+                                <form method="post" action="{{ url_for('zuordnung_ablehnen', zuordnung_id=_bz.id) }}"
+                                      onsubmit="return confirm('Zuordnung wirklich lösen?')">
+                                    <button type="submit" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Zuordnung lösen">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18"/>
+                                        </svg>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+</div>
+{% endif %}
+
+</div><!-- end tab-buchungen -->
+</div><!-- end tab-content -->
+</div><!-- end abgleich-container -->
+
+<!-- Batch-Aktionsleiste -->
+<div id="batch-bar" class="hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-900 text-white px-6 py-3 flex items-center gap-3 shadow-lg">
+    <span id="batch-count" class="text-sm font-semibold whitespace-nowrap"></span>
+    <input type="text" id="batch-notiz" placeholder="Notiz (optional)…"
+           class="flex-1 max-w-xs px-3 py-1.5 bg-slate-800 text-white text-sm rounded-lg border border-slate-600 placeholder-slate-400 focus:outline-none focus:border-slate-400">
+    <button type="button" onclick="openBatchIgnorieren()"
+            class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg whitespace-nowrap">
+        Ignorieren
+    </button>
+    <button type="button" onclick="clearBatchSelection()"
+            class="px-3 py-1.5 text-slate-200 hover:text-white text-sm">
+        Abbrechen
+    </button>
+</div>
+
+<!-- Shared Manuell Modal -->
+<div id="manuell-overlay" class="hidden fixed inset-0 z-40" style="background:rgba(0,0,0,0.25)">
+    <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[760px] max-w-[95vw] bg-white rounded-xl shadow-xl flex flex-col" style="max-height:80vh">
+        <div class="flex justify-between items-start p-4 border-b border-slate-100 flex-shrink-0">
+            <div>
+                <p id="manuell-name" class="font-semibold text-slate-900"></p>
+                <p id="manuell-info" class="text-xs text-slate-500 mt-0.5"></p>
+                <p id="manuell-betrag" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+            <button onclick="closeManuell()" class="text-slate-400 hover:text-slate-600 text-lg leading-none ml-4">✕</button>
+        </div>
+        <div class="px-4 pt-3 flex-shrink-0">
+            <input id="manuell-search" type="text" placeholder="Suchen nach Auftraggeber, Verwendungszweck, Betrag..."
+                   oninput="filterManuellBuchungen(this.value)"
+                   class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+        </div>
+        <div id="manuell-discrepancy" class="hidden mx-4 mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200 flex-shrink-0">
+            <p id="manuell-disc-text" class="text-sm text-amber-800 mb-2"></p>
+            <div id="manuell-disc-actions" class="flex flex-wrap gap-2 justify-end"></div>
+        </div>
+        <div class="overflow-y-auto flex-1 px-4 pb-4 mt-2">
+            {% if freie_buchungen %}
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-medium text-slate-600">Freie Buchungen ({{ freie_buchungen|length }})</span>
+                <button type="button" onclick="toggleManuellSection('manuell-freie-tbody')" class="text-xs text-slate-400 hover:text-slate-600 underline">ein-/ausblenden</button>
+            </div>
+            <table class="min-w-full text-xs divide-y divide-slate-100">
+                <thead class="bg-slate-50 sticky top-0">
+                    <tr>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Datum</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Auftraggeber</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Verwendungszweck</th>
+                        <th class="px-3 py-2 text-right font-medium text-slate-500">Betrag</th>
+                        <th class="px-3 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100" id="manuell-freie-tbody">
+                    {% for b in freie_buchungen %}
+                    {% set bvf = b.betrag_verfuegbar %}
+                    <tr class="manuell-row hover:bg-slate-50"
+                        data-search="{{ (b.auftraggeber or '') | lower }} {{ (b.verwendungszweck or '') | lower }} {{ '%.2f' | format(bvf) }} {{ b.buchungstag.strftime('%d.%m.%Y') }}"
+                        data-betrag="{{ bvf }}"
+                        id="manuell-row-{{ b.id }}">
+                        <td class="px-3 py-2 text-slate-600 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                        <td class="px-3 py-2 text-slate-900 max-w-[150px] truncate" title="{{ b.auftraggeber or '' }}">{{ b.auftraggeber or '—' }}</td>
+                        <td class="px-3 py-2 text-slate-500 max-w-[220px] truncate" title="{{ b.verwendungszweck or '' }}">{{ b.verwendungszweck or '—' }}</td>
+                        <td class="px-3 py-2 text-right font-medium text-slate-900 whitespace-nowrap manuell-betrag-cell">
+                            {{ "%.2f"|format(bvf) }} €
+                            {% if bvf != b.betrag %}
+                            <span class="block text-xs text-amber-600 font-normal">(von {{ "%.2f"|format(b.betrag) }} €)</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-2">
+                            <form class="manuell-form">
+                                <input type="hidden" name="erwartung_id" class="manuell-eid" value="">
+                                <input type="hidden" name="buchung_id" value="{{ b.id }}">
+                                <input type="hidden" name="aktion" class="manuell-aktion" value="auto">
+                                <button type="button"
+                                        onclick='manuellZuordnen(this, {{ bvf }}, {{ b.id }})'
+                                        class="px-2 py-1 text-white rounded-lg text-xs font-medium whitespace-nowrap"
+                                        style="background:#036dd1;"
+                                        onmouseover="this.style.background='#0258a8'"
+                                        onmouseout="this.style.background='#036dd1'">
+                                    Zuordnen
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-sm text-slate-400 py-4 text-center">Keine freien Buchungen.</p>
+            {% endif %}
+            {% set verlinkte_pos = alle_pos_buchungen | selectattr('zugeordnet', 'equalto', True) | list %}
+            {% if verlinkte_pos %}
+            <div class="flex justify-between items-center mt-4 mb-1 border-t border-slate-100 pt-3">
+                <span class="text-xs font-medium text-slate-500">Bereits zugeordnet — Neuverknüpfung möglich ({{ verlinkte_pos|length }})</span>
+                <button type="button" onclick="toggleManuellSection('manuell-zugeordnet-tbody')" class="text-xs text-slate-400 hover:text-slate-600 underline">ein-/ausblenden</button>
+            </div>
+            <table class="min-w-full text-xs divide-y divide-slate-100">
+                <thead class="bg-slate-50 sticky top-0">
+                    <tr>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Datum</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Auftraggeber</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Verwendungszweck</th>
+                        <th class="px-3 py-2 text-right font-medium text-slate-500">Betrag</th>
+                        <th class="px-3 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 hidden" id="manuell-zugeordnet-tbody">
+                    {% for b in verlinkte_pos %}
+                    {% set linked_z = b.zuordnungen.filter_by(bestaetigt=True).first() %}
+                    {% set linked_to = linked_z.erwartung.schueler.voller_name if linked_z else '' %}
+                    <tr class="manuell-row opacity-60 hover:opacity-100 hover:bg-amber-50"
+                        data-search="{{ (b.auftraggeber or '') | lower }} {{ (b.verwendungszweck or '') | lower }} {{ '%.2f' | format(b.betrag) }} {{ b.buchungstag.strftime('%d.%m.%Y') }}"
+                        data-betrag="{{ b.betrag }}"
+                        data-linked="true"
+                        data-linked-to="{{ linked_to | e }}"
+                        id="manuell-row-{{ b.id }}">
+                        <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                        <td class="px-3 py-2 text-slate-700 max-w-[150px] truncate" title="{{ b.auftraggeber or '' }}">
+                            {{ b.auftraggeber or '—' }}
+                            {% if linked_to %}<span class="block text-xs text-slate-400">→ {{ linked_to }}</span>{% endif %}
+                        </td>
+                        <td class="px-3 py-2 text-slate-400 max-w-[220px] truncate" title="{{ b.verwendungszweck or '' }}">{{ b.verwendungszweck or '—' }}</td>
+                        <td class="px-3 py-2 text-right font-medium text-slate-500 whitespace-nowrap manuell-betrag-cell">
+                            {{ "%.2f"|format(b.betrag) }} €
+                        </td>
+                        <td class="px-3 py-2">
+                            <form class="manuell-form">
+                                <input type="hidden" name="erwartung_id" class="manuell-eid" value="">
+                                <input type="hidden" name="buchung_id" value="{{ b.id }}">
+                                <input type="hidden" name="aktion" class="manuell-aktion" value="auto">
+                                <button type="button"
+                                        onclick='manuellZuordnen(this, {{ b.betrag }}, {{ b.id }})'
+                                        class="px-2 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 whitespace-nowrap">
+                                    Neu zuordnen
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Negate/Ignore Modal -->
+<div id="negieren-overlay" class="hidden fixed inset-0 z-40" style="background:rgba(0,0,0,0.25)">
+    <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-96 max-w-[95vw] bg-white rounded-xl shadow-xl p-5">
+        <div class="flex justify-between items-start mb-3">
+            <div>
+                <p id="negieren-title" class="font-semibold text-slate-900 text-sm"></p>
+                <p id="negieren-betrag" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+            <button onclick="closeNegieren()" class="text-slate-400 hover:text-slate-600 text-lg leading-none ml-4">✕</button>
+        </div>
+        <form id="negieren-form">
+            <label class="block text-sm text-slate-700 mb-1">Notiz <span class="text-slate-400">(optional, für Audit-Trail)</span></label>
+            <input type="text" id="negieren-notiz" name="notiz" placeholder="z.B. Irrtümliche Überweisung, Doppelabbuchung..."
+                   class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-4 focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="closeNegieren()"
+                        class="px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
+                    Abbrechen
+                </button>
+                <button type="submit"
+                        class="px-3 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700">
+                    Ignorieren
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Refund Link Modal (negativ → wähle positiv) -->
+<div id="refund-overlay" class="hidden fixed inset-0 z-40" style="background:rgba(0,0,0,0.25)">
+    <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[820px] max-w-[95vw] bg-white rounded-xl shadow-xl flex flex-col" style="max-height:80vh">
+        <div class="flex justify-between items-start p-4 border-b border-slate-100 flex-shrink-0">
+            <div>
+                <p id="refund-title" class="font-semibold text-slate-900"></p>
+                <p id="refund-betrag" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+            <button onclick="closeRefundLink()" class="text-slate-400 hover:text-slate-600 text-lg leading-none ml-4">✕</button>
+        </div>
+        <div class="px-4 pt-3 flex-shrink-0">
+            <p class="text-sm text-slate-600 mb-2">Wähle die ursprüngliche Zahlung, zu der dieser Betrag gehört:</p>
+            <input id="refund-search" type="text" placeholder="Suchen nach Auftraggeber, Verwendungszweck..."
+                   oninput="filterRefundBuchungen(this.value)"
+                   class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+        </div>
+        <div id="refund-discrepancy" class="hidden mx-4 mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200 flex-shrink-0">
+            <p id="refund-disc-text" class="text-sm text-amber-800 mb-2"></p>
+            <div id="refund-disc-actions" class="flex flex-wrap gap-2 justify-end"></div>
+        </div>
+        <div class="overflow-y-auto flex-1 px-4 pb-4 mt-2" id="refund-modal-scroll">
+            {% set _refund_offen = alle_pos_buchungen | rejectattr('zugeordnet') | list %}
+            {% set _refund_zugeordnet = alle_pos_buchungen | selectattr('zugeordnet') | list %}
+            <table class="min-w-full text-xs divide-y divide-slate-100" id="refund-buchungen-table">
+                <thead class="bg-slate-50 sticky top-0">
+                    <tr>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Datum</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Auftraggeber</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500 cursor-pointer hover:text-slate-700"
+                            onclick="toggleAllVZ('refund-buchungen-table')">
+                            Verwendungszweck <span class="text-slate-400">↕</span>
+                        </th>
+                        <th class="px-3 py-2 text-right font-medium text-slate-500">Betrag</th>
+                        <th class="px-3 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% if _refund_offen %}
+                    {% for b in _refund_offen %}
+                    <tr class="refund-row hover:bg-slate-50"
+                        data-search="{{ (b.auftraggeber or '') | lower }} {{ (b.verwendungszweck or '') | lower }} {{ b.buchungstag.strftime('%d.%m.%Y') }}"
+                        data-betrag="{{ b.betrag }}">
+                        <td class="px-3 py-2 text-slate-600 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                        <td class="px-3 py-2 text-slate-900 max-w-[160px] truncate">{{ b.auftraggeber or '—' }}</td>
+                        <td class="px-3 py-2 text-slate-500 max-w-[260px] vz-cell cursor-pointer"
+                            onclick="this.classList.toggle('vz-expanded')">{{ b.verwendungszweck or '—' }}</td>
+                        <td class="px-3 py-2 text-right font-medium text-green-700 whitespace-nowrap">+{{ "%.2f"|format(b.betrag) }} €</td>
+                        <td class="px-3 py-2">
+                            <form class="refund-link-form">
+                                <input type="hidden" name="refund_id" class="refund-id-input" value="">
+                                <input type="hidden" name="original_id" value="{{ b.id }}">
+                                <button type="button"
+                                        onclick='refundVerlinken(this, {{ b.betrag }}, {{ b.id }}, "refund")'
+                                        class="px-2 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 whitespace-nowrap">
+                                    Verlinken
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr><td colspan="5" class="px-3 py-4 text-center text-slate-400">Keine freien Zahlungen vorhanden.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            {% if _refund_zugeordnet %}
+            <div class="mt-3 border-t border-slate-100 pt-2">
+                <button type="button" onclick="document.getElementById('refund-zugeordnete-tbody').classList.toggle('hidden')"
+                        class="text-xs text-slate-500 hover:text-slate-700 underline">
+                    Bereits zugeordnete Zahlungen ({{ _refund_zugeordnet|length }}) ein-/ausblenden
+                </button>
+                <table class="min-w-full text-xs divide-y divide-slate-100 mt-1">
+                    <tbody id="refund-zugeordnete-tbody" class="hidden divide-y divide-slate-100 opacity-60">
+                        {% for b in _refund_zugeordnet %}
+                        <tr class="refund-row hover:bg-slate-50"
+                            data-search="{{ (b.auftraggeber or '') | lower }} {{ (b.verwendungszweck or '') | lower }} {{ b.buchungstag.strftime('%d.%m.%Y') }}"
+                            data-betrag="{{ b.betrag }}">
+                            <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                            <td class="px-3 py-2 text-slate-700 max-w-[160px] truncate">{{ b.auftraggeber or '—' }}</td>
+                            <td class="px-3 py-2 text-slate-400 max-w-[260px] vz-cell cursor-pointer"
+                                onclick="this.classList.toggle('vz-expanded')">{{ b.verwendungszweck or '—' }}</td>
+                            <td class="px-3 py-2 text-right font-medium text-slate-500 whitespace-nowrap">+{{ "%.2f"|format(b.betrag) }} €</td>
+                            <td class="px-3 py-2">
+                                <form class="refund-link-form">
+                                    <input type="hidden" name="refund_id" class="refund-id-input" value="">
+                                    <input type="hidden" name="original_id" value="{{ b.id }}">
+                                    <button type="button"
+                                            onclick='refundVerlinken(this, {{ b.betrag }}, {{ b.id }}, "refund")'
+                                            class="px-2 py-1 bg-slate-400 text-white rounded-lg text-xs font-medium hover:bg-slate-500 whitespace-nowrap">
+                                        Verlinken
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Link zu Negativ Modal (positiv → wähle negativen Betrag) -->
+<div id="link-zu-negativ-overlay" class="hidden fixed inset-0 z-40" style="background:rgba(0,0,0,0.25)">
+    <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[680px] max-w-[95vw] bg-white rounded-xl shadow-xl flex flex-col" style="max-height:80vh">
+        <div class="flex justify-between items-start p-4 border-b border-slate-100 flex-shrink-0">
+            <div>
+                <p id="link-zu-negativ-title" class="font-semibold text-slate-900"></p>
+                <p id="link-zu-negativ-betrag" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+            <button onclick="closeLinkZuNegativ()" class="text-slate-400 hover:text-slate-600 text-lg leading-none ml-4">✕</button>
+        </div>
+        <div class="px-4 pt-3 flex-shrink-0">
+            <p class="text-sm text-slate-600 mb-2">Wähle den negativen Betrag, der zu dieser Zahlung gehört:</p>
+            <input id="link-zu-negativ-search" type="text" placeholder="Suchen nach Auftraggeber..."
+                   oninput="filterLinkZuNegativ(this.value)"
+                   class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+        </div>
+        <div id="lzn-discrepancy" class="hidden mx-4 mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200 flex-shrink-0">
+            <p id="lzn-disc-text" class="text-sm text-amber-800 mb-2"></p>
+            <div id="lzn-disc-actions" class="flex flex-wrap gap-2 justify-end"></div>
+        </div>
+        <div class="overflow-y-auto flex-1 px-4 pb-4 mt-2">
+            {% if offene_refunds %}
+            <table class="min-w-full text-xs divide-y divide-slate-100">
+                <thead class="bg-slate-50 sticky top-0">
+                    <tr>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Datum</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Auftraggeber</th>
+                        <th class="px-3 py-2 text-left font-medium text-slate-500">Verwendungszweck</th>
+                        <th class="px-3 py-2 text-right font-medium text-slate-500">Betrag</th>
+                        <th class="px-3 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for b in offene_refunds %}
+                    <tr class="link-zu-negativ-row hover:bg-slate-50"
+                        data-search="{{ (b.auftraggeber or '') | lower }} {{ b.buchungstag.strftime('%d.%m.%Y') }}"
+                        data-betrag="{{ b.betrag }}">
+                        <td class="px-3 py-2 text-slate-600 whitespace-nowrap">{{ b.buchungstag.strftime('%d.%m.%Y') }}</td>
+                        <td class="px-3 py-2 text-slate-900 max-w-[160px] truncate">{{ b.auftraggeber or '—' }}</td>
+                        <td class="px-3 py-2 text-slate-500 max-w-[160px] truncate">{{ b.verwendungszweck or '—' }}</td>
+                        <td class="px-3 py-2 text-right font-medium text-red-600 whitespace-nowrap">{{ "%.2f"|format(b.betrag) }} €</td>
+                        <td class="px-3 py-2">
+                            <form class="lzn-link-form">
+                                <input type="hidden" name="original_id" class="link-zu-negativ-original-id" value="">
+                                <input type="hidden" name="refund_id" value="{{ b.id }}">
+                                <button type="button"
+                                        onclick='refundVerlinken(this, {{ b.betrag }}, {{ b.id }}, "lzn")'
+                                        class="px-2 py-1 text-white rounded-lg text-xs font-medium whitespace-nowrap"
+                                        style="background:#036dd1;"
+                                        onmouseover="this.style.background='#0258a8'"
+                                        onmouseout="this.style.background='#036dd1'">
+                                    Verlinken
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-sm text-slate-400 py-4 text-center">Keine nicht zugeordneten negativen Beträge vorhanden.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Manuell-Modal (für Erwartungen) ──────────────────────────────────────────
+let _manuellErwartet = 0;
+let _manuellEid = null;
+let _manuellSummeZugeordnet = 0;
+let _manuellPendingForm = null;
+let _manuellPendingAktion = null;
+let _manuellPendingBetrag = 0;
+let _manuellPendingBuchungId = null;
+
+function toggleManuellSection(tbodyId) {
+    const el = document.getElementById(tbodyId);
+    if (el) el.classList.toggle('hidden');
+}
+
+function openManuell(eid, name, betrag, bereitsZugeordnet, info) {
+    _manuellErwartet = parseFloat(betrag);
+    _manuellEid = eid;
+    _manuellSummeZugeordnet = parseFloat(bereitsZugeordnet) || 0;
+    document.querySelectorAll('.manuell-eid').forEach(i => i.value = eid);
+    document.getElementById('manuell-name').textContent = name;
+    // Show student info: kontoinhaber, klasse, sheet_id
+    if (info) {
+        const parts = [];
+        if (info.kontoinhaber && info.kontoinhaber !== name) parts.push('Konto: ' + info.kontoinhaber);
+        if (info.klasse) parts.push(info.klasse);
+        if (info.sheet_id) parts.push('ID: ' + info.sheet_id);
+        document.getElementById('manuell-info').textContent = parts.join(' · ');
+    } else {
+        document.getElementById('manuell-info').textContent = '';
+    }
+    _updateManuellHeader();
+    const remaining = _manuellErwartet - _manuellSummeZugeordnet;
+    document.querySelectorAll('.manuell-row').forEach(row => {
+        const cell = row.querySelector('.manuell-betrag-cell');
+        if (cell) {
+            const rowBetrag = parseFloat(row.dataset.betrag);
+            cell.classList.toggle('text-green-700', Math.abs(rowBetrag - remaining) < 0.01);
+            cell.classList.toggle('text-slate-900', Math.abs(rowBetrag - remaining) >= 0.01);
+        }
+    });
+    document.getElementById('manuell-discrepancy').classList.add('hidden');
+    document.getElementById('manuell-overlay').classList.remove('hidden');
+    const s = document.getElementById('manuell-search');
+    s.value = '';
+    filterManuellBuchungen('');
+}
+function _updateManuellHeader() {
+    const remaining = _manuellErwartet - _manuellSummeZugeordnet;
+    const fmt = v => v.toFixed(2).replace('.', ',');
+    document.getElementById('manuell-betrag').textContent = _manuellSummeZugeordnet > 0
+        ? 'Erwartet: ' + fmt(_manuellErwartet) + ' € — Noch offen: ' + fmt(remaining) + ' €'
+        : 'Erwartet: ' + fmt(_manuellErwartet) + ' €';
+}
+function closeManuell() {
+    document.getElementById('manuell-overlay').classList.add('hidden');
+    document.getElementById('manuell-discrepancy').classList.add('hidden');
+}
+function filterFreieBuchungen(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('#freie-buchungen-table tbody tr').forEach(r => {
+        const matchText = !q || (r.dataset.search || '').includes(q);
+        const matchKonfidenz = _zahlungenKonfidenzFilter === 'alle' || r.dataset.konfidenz === _zahlungenKonfidenzFilter;
+        r.style.display = (matchText && matchKonfidenz) ? '' : 'none';
+    });
+}
+function filterZahlungenKonfidenz(stufe) {
+    _zahlungenKonfidenzFilter = stufe;
+    document.querySelectorAll('.zf-btn').forEach(b => b.classList.remove('zf-active', 'ring-2', 'ring-offset-1', 'ring-gray-400'));
+    const active = document.getElementById('zf-' + stufe);
+    if (active) active.classList.add('zf-active', 'ring-2', 'ring-offset-1', 'ring-gray-400');
+    filterFreieBuchungen(document.getElementById('buchungen-suche')?.value || '');
+}
+function filterRueckbuchungen(q) {
+    q = (q || '').toLowerCase();
+    document.querySelectorAll('#neg-buchungen-section table tbody tr').forEach(r => {
+        r.style.display = !q || (r.dataset.search || '').includes(q) ? '' : 'none';
+    });
+}
+function filterManuellBuchungen(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('.manuell-row').forEach(r => {
+        const show = !q || (r.dataset.search || '').includes(q);
+        r.style.display = show ? '' : 'none';
+        // If a row in hidden section becomes visible, show the section
+        if (show && r.closest('tbody') && r.closest('tbody').classList.contains('hidden') && q) {
+            r.closest('tbody').classList.remove('hidden');
+        }
+    });
+}
+document.getElementById('manuell-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeManuell();
+});
+
+// Called when admin clicks "Zuordnen" in the manuell modal
+function manuellZuordnen(btn, buchungBetrag, buchungId) {
+    const row = document.getElementById('manuell-row-' + buchungId);
+    if (row && row.dataset.linked === 'true') {
+        const linkedTo = row.dataset.linkedTo || 'einer anderen Erwartung';
+        if (!confirm('Diese Buchung ist bereits zugeordnet an ' + linkedTo + '. Bestehende Zuordnung aufheben und neu zuordnen?')) return;
+        const form = btn.closest('form');
+        let inp = form.querySelector('input[name="force_reassign"]');
+        if (!inp) { inp = document.createElement('input'); inp.type = 'hidden'; inp.name = 'force_reassign'; form.appendChild(inp); }
+        inp.value = '1';
+    }
+    const form = btn.closest('form');
+    const remaining = _manuellErwartet - _manuellSummeZugeordnet;
+    const diff = buchungBetrag - remaining;
+    const fmt = v => v.toFixed(2).replace('.', ',');
+
+    // Remove any existing inline confirm rows
+    document.querySelectorAll('.inline-confirm-row').forEach(r => r.remove());
+
+    if (Math.abs(diff) < 0.01) {
+        // Exact match → submit directly
+        _submitManuell(form, 'zugeordnet', btn, buchungId, buchungBetrag);
+    } else {
+        // Discrepancy → show inline confirm row directly under this booking row
+        _manuellPendingForm = form;
+        _manuellPendingBetrag = buchungBetrag;
+        _manuellPendingBuchungId = buchungId;
+
+        const parentRow = btn.closest('tr');
+        const colCount = parentRow ? parentRow.querySelectorAll('td, th').length : 6;
+        const confirmRow = document.createElement('tr');
+        confirmRow.className = 'inline-confirm-row bg-amber-50';
+
+        let msg, actionsBtns;
+        if (diff < 0) {
+            const rest = remaining - buchungBetrag;
+            msg = '⚠ Zahlung ' + fmt(buchungBetrag) + ' € deckt nur einen Teil (fehlen noch ' + fmt(rest) + ' €).';
+            actionsBtns =
+                '<button type="button" onclick="_confirmManuell(\'teilweise\', true)" class="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 whitespace-nowrap">Teilzahlung + weiter wählen</button>' +
+                '<button type="button" onclick="_confirmManuell(\'teilweise\', false)" class="px-2 py-1 text-xs border border-slate-200 text-slate-600 rounded hover:bg-slate-50">Nur speichern</button>';
+        } else {
+            msg = '⚠ Zahlung ' + fmt(buchungBetrag) + ' € übersteigt die Erwartung um ' + fmt(diff) + ' €.';
+            actionsBtns =
+                '<button type="button" onclick="_confirmManuell(\'zugeordnet\', false)" class="px-2 py-1 text-xs text-white rounded" style="background:#036dd1" onmouseover="this.style.background=\'#0258a8\'" onmouseout="this.style.background=\'#036dd1\'">Zuordnen</button>' +
+                '<button type="button" onclick="_confirmManuell(\'keep_open\', false)" class="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 whitespace-nowrap">Zuordnen + Restbetrag (+' + fmt(diff) + ' €) freihalten</button>';
+        }
+        confirmRow.innerHTML = '<td colspan="' + colCount + '" class="px-4 py-2.5 border-b border-amber-200">' +
+            '<div class="text-xs text-amber-800 font-medium mb-2">' + msg + '</div>' +
+            '<div class="flex flex-wrap gap-2 justify-end">' +
+            actionsBtns +
+            '<button type="button" onclick="document.querySelectorAll(\'.inline-confirm-row\').forEach(r=>r.remove())" class="px-2 py-1 text-xs text-slate-400 hover:text-slate-600">Abbrechen</button>' +
+            '</div></td>';
+
+        if (parentRow && parentRow.parentNode) {
+            parentRow.parentNode.insertBefore(confirmRow, parentRow.nextSibling);
+            confirmRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+}
+
+function _confirmManuell(aktion, weiterWaehlen) {
+    document.querySelectorAll('.inline-confirm-row').forEach(r => r.remove());
+    _submitManuell(_manuellPendingForm, aktion, null, _manuellPendingBuchungId, _manuellPendingBetrag, weiterWaehlen);
+}
+
+function _submitManuell(form, aktion, btn, buchungId, buchungBetrag, weiterWaehlen) {
+    if (btn) btn.disabled = true;
+    form.querySelector('.manuell-aktion').value = aktion;
+    const data = new FormData(form);
+    fetch('/abgleich/manuell', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Fetch': 'true'},
+        body: new URLSearchParams(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        // Update the expectation row in main table
+        const eid = result.erwartung_id;
+        fetch('/abgleich/erwartung/' + eid + '/zeile')
+            .then(r => r.text())
+            .then(html => {
+                const row = document.getElementById('erwartung-' + eid);
+                if (row) row.outerHTML = html;
+            });
+
+        // Update or remove the booking row
+        const mRow = document.getElementById('manuell-row-' + buchungId);
+        if (mRow) {
+            const newBvf = result.buchung_betrag_verfuegbar;
+            if (!result.buchung_bleibt_offen || newBvf == null || newBvf < 0.01) {
+                mRow.remove();
+            } else {
+                // Update data-betrag and displayed amount to the residual
+                mRow.dataset.betrag = newBvf;
+                const fmt = v => v.toFixed(2).replace('.', ',');
+                const cell = mRow.querySelector('.manuell-betrag-cell');
+                if (cell) {
+                    cell.innerHTML = fmt(newBvf) + ' € <span class="block text-xs text-amber-600 font-normal">(Restbetrag)</span>';
+                }
+                // Update onclick to use new residual betrag
+                const zuordnenBtn = mRow.querySelector('button[type="button"]');
+                if (zuordnenBtn) {
+                    zuordnenBtn.setAttribute('onclick', 'manuellZuordnen(this, ' + newBvf + ', ' + buchungId + ')');
+                }
+            }
+        }
+
+        if (result.buchung_bleibt_offen || result.status === 'zugeordnet' || !weiterWaehlen) {
+            closeManuell();
+        } else {
+            // Teilweise + weiterWaehlen: stay open, update header
+            _manuellSummeZugeordnet += buchungBetrag;
+            _updateManuellHeader();
+            // Highlight rows matching remaining amount
+            const remaining = _manuellErwartet - _manuellSummeZugeordnet;
+            document.querySelectorAll('.manuell-row').forEach(row => {
+                const cell = row.querySelector('.manuell-betrag-cell');
+                if (cell) {
+                    const rb = parseFloat(row.dataset.betrag);
+                    cell.classList.toggle('text-green-700', Math.abs(rb - remaining) < 0.01);
+                    cell.classList.toggle('text-slate-900', Math.abs(rb - remaining) >= 0.01);
+                }
+            });
+        }
+    })
+    .finally(() => { if (btn) btn.disabled = false; });
+}
+
+// ── Ignoriert-Tabelle dynamisch befüllen ──────────────────────────────────────
+function _addToIgnoriertTable(id, datum, name, vz, notiz, betrag) {
+    const tbody = document.getElementById('ignoriert-tbody');
+    if (!tbody) return;
+    const details = document.getElementById('ignoriert-details');
+    if (details) details.open = true;
+    const countEl = document.getElementById('ignoriert-count');
+    if (countEl) countEl.textContent = parseInt(countEl.textContent || '0') + 1;
+    const isNeg = parseFloat(betrag) < 0;
+    const betragsClass = isNeg ? 'text-red-400' : 'text-slate-500';
+    const betragsFormatted = parseFloat(betrag).toFixed(2).replace('.', ',');
+    const esc = s => (s || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const tr = document.createElement('tr');
+    tr.className = 'opacity-60';
+    tr.id = 'ignoriert-' + id;
+    tr.innerHTML =
+        '<td class="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">' + esc(datum) + '</td>' +
+        '<td class="px-4 py-2 text-xs text-slate-600 max-w-[140px] truncate" title="' + esc(name) + '">' + esc(name) + '</td>' +
+        '<td class="px-4 py-2 text-xs text-slate-400 max-w-[220px] truncate" title="' + esc(vz) + '">' + esc(vz) + '</td>' +
+        '<td class="px-4 py-2 text-xs text-slate-400 italic max-w-[120px] truncate" title="' + esc(notiz) + '">' + esc(notiz) + '</td>' +
+        '<td class="px-4 py-2 text-xs text-right ' + betragsClass + ' whitespace-nowrap">' + betragsFormatted + ' €</td>' +
+        '<td class="px-4 py-2 text-right"><button type="button" onclick="reaktiviereBuchung(' + id + ')" class="px-2 py-1 text-xs text-slate-400 hover:text-green-700 hover:bg-green-50 border border-slate-100 hover:border-green-200 rounded">Reaktivieren</button></td>';
+    tbody.appendChild(tr);
+}
+
+// ── Konfidenz-Legende ─────────────────────────────────────────────────────────
+function toggleKonfidenzLegende() {
+    document.getElementById('konfidenz-legende').classList.toggle('hidden');
+}
+
+// ── Dreipunkt-Menü: schließen bei Klick außerhalb ─────────────────────────────
+document.addEventListener('click', function(e) {
+    document.querySelectorAll('details.relative[open]').forEach(function(d) {
+        if (!d.contains(e.target)) d.removeAttribute('open');
+    });
+});
+
+// ── Negate/Ignore Modal ───────────────────────────────────────────────────────
+let negierenBuchungId = null;
+let negierenIsBatch = false;
+
+function openNegierenDialog(buchungId, name, betrag) {
+    negierenBuchungId = buchungId;
+    negierenIsBatch = false;
+    document.getElementById('negieren-title').textContent =
+        (betrag < 0 ? 'Negativen Betrag' : 'Zahlung') + ' ignorieren: ' + (name || '');
+    document.getElementById('negieren-betrag').textContent =
+        'Betrag: ' + parseFloat(betrag).toFixed(2).replace('.', ',') + ' €';
+    document.getElementById('negieren-notiz').value = '';
+    document.getElementById('negieren-overlay').classList.remove('hidden');
+    document.getElementById('negieren-notiz').focus();
+}
+function openBatchIgnorieren() {
+    const selected = document.querySelectorAll('.buchung-checkbox:checked');
+    if (selected.length === 0) return;
+    negierenIsBatch = true;
+    negierenBuchungId = null;
+    document.getElementById('negieren-title').textContent = selected.length + ' Buchungen ignorieren';
+    document.getElementById('negieren-betrag').textContent = '';
+    document.getElementById('negieren-notiz').value = document.getElementById('batch-notiz').value;
+    document.getElementById('negieren-overlay').classList.remove('hidden');
+    document.getElementById('negieren-notiz').focus();
+}
+function closeNegieren() {
+    document.getElementById('negieren-overlay').classList.add('hidden');
+}
+document.getElementById('negieren-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeNegieren();
+});
+
+document.getElementById('negieren-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const notiz = document.getElementById('negieren-notiz').value;
+    const btn = this.querySelector('button[type="submit"]');
+    btn.disabled = true;
+
+    if (negierenIsBatch) {
+        const ids = Array.from(document.querySelectorAll('.buchung-checkbox:checked')).map(cb => cb.value);
+        const body = ids.map(id => 'ids=' + encodeURIComponent(id)).join('&') + '&notiz=' + encodeURIComponent(notiz);
+        fetch('/abgleich/batch-negieren', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body
+        })
+        .then(r => r.json())
+        .then(data => {
+            (data.ids || []).forEach(id => {
+                const row = document.getElementById('buchung-' + id);
+                if (row) row.remove();
+            });
+            (data.bookings || []).forEach(b => {
+                _addToIgnoriertTable(b.id, b.buchungstag, b.auftraggeber, b.verwendungszweck, b.notiz, b.betrag);
+            });
+            clearBatchSelection();
+            closeNegieren();
+        })
+        .finally(() => { btn.disabled = false; });
+    } else {
+        fetch('/abgleich/negieren/' + negierenBuchungId, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Fetch': 'true'},
+            body: 'notiz=' + encodeURIComponent(notiz)
+        })
+        .then(r => r.json())
+        .then(data => {
+            const row = document.getElementById('buchung-' + negierenBuchungId);
+            if (row) row.remove();
+            closeNegieren();
+            updateBatchBar();
+            _addToIgnoriertTable(data.id, data.buchungstag, data.auftraggeber, data.verwendungszweck, data.notiz, data.betrag);
+        })
+        .finally(() => { btn.disabled = false; });
+    }
+});
+
+// ── Refund-Link Modal (negativ → positiv) ─────────────────────────────────────
+let _refundBetrag = 0;
+let _refundId = null;
+
+function openRefundLinkDialog(refundId, name, betrag) {
+    _refundId = refundId;
+    _refundBetrag = Math.abs(parseFloat(betrag));
+    document.querySelectorAll('.refund-id-input').forEach(i => i.value = refundId);
+    document.getElementById('refund-title').textContent = 'Betrag verlinken: ' + (name || '');
+    document.getElementById('refund-betrag').textContent =
+        'Betrag: ' + parseFloat(betrag).toFixed(2).replace('.', ',') + ' €';
+    document.getElementById('refund-discrepancy').classList.add('hidden');
+    document.getElementById('refund-overlay').classList.remove('hidden');
+    document.getElementById('refund-search').value = '';
+    filterRefundBuchungen('');
+}
+function closeRefundLink() {
+    document.getElementById('refund-overlay').classList.add('hidden');
+}
+function filterRefundBuchungen(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('.refund-row').forEach(r => {
+        r.style.display = (r.dataset.search || '').includes(q) ? '' : 'none';
+    });
+}
+document.getElementById('refund-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeRefundLink();
+});
+
+// ── Link-zu-Negativ Modal (positiv → negativ) ─────────────────────────────────
+let _lznBetrag = 0;
+let _lznOriginalId = null;
+
+function openLinkZuNegativDialog(originalId, name, betrag) {
+    _lznOriginalId = originalId;
+    _lznBetrag = parseFloat(betrag);
+    document.querySelectorAll('.link-zu-negativ-original-id').forEach(i => i.value = originalId);
+    document.getElementById('link-zu-negativ-title').textContent = 'Negativen Betrag verlinken: ' + (name || '');
+    document.getElementById('link-zu-negativ-betrag').textContent =
+        'Zahlung: +' + parseFloat(betrag).toFixed(2).replace('.', ',') + ' €';
+    document.getElementById('lzn-discrepancy').classList.add('hidden');
+    document.getElementById('link-zu-negativ-overlay').classList.remove('hidden');
+    document.getElementById('link-zu-negativ-search').value = '';
+    filterLinkZuNegativ('');
+}
+function closeLinkZuNegativ() {
+    document.getElementById('link-zu-negativ-overlay').classList.add('hidden');
+}
+function filterLinkZuNegativ(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('.link-zu-negativ-row').forEach(r => {
+        r.style.display = (r.dataset.search || '').includes(q) ? '' : 'none';
+    });
+}
+document.getElementById('link-zu-negativ-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeLinkZuNegativ();
+});
+
+// ── Shared: Discrepancy check for refund/lzn linking ─────────────────────────
+let _pendingLinkForm = null;
+let _pendingLinkMode = null;
+
+function refundVerlinken(btn, otherBetrag, otherId, mode) {
+    // mode: "refund" (neg→pos modal) or "lzn" (pos→neg modal)
+    const form = btn.closest('form');
+    const fmt = v => Math.abs(v).toFixed(2).replace('.', ',');
+
+    let negativBetrag, positivBetrag;
+    if (mode === 'refund') {
+        negativBetrag = _refundBetrag;   // absolute value
+        positivBetrag = otherBetrag;
+    } else {
+        positivBetrag = _lznBetrag;
+        negativBetrag = Math.abs(otherBetrag);
+    }
+
+    const diff = positivBetrag - negativBetrag;
+    const panelId = mode === 'refund' ? 'refund-discrepancy' : 'lzn-discrepancy';
+    const textId  = mode === 'refund' ? 'refund-disc-text' : 'lzn-disc-text';
+    const actId   = mode === 'refund' ? 'refund-disc-actions' : 'lzn-disc-actions';
+
+    document.getElementById(panelId).classList.add('hidden');
+
+    if (Math.abs(diff) < 0.01) {
+        _doRefundLink(form, false);
+    } else {
+        _pendingLinkForm = form;
+        _pendingLinkMode = mode;
+        if (diff > 0.01) {
+            // Partial refund: |neg| < pos — residual on the positive side
+            document.getElementById(textId).textContent =
+                'Teilerstattung: −' + fmt(negativBetrag) + ' € für Zahlung +' + fmt(positivBetrag) + ' € (Differenz +' + diff.toFixed(2).replace('.', ',') + ' €).';
+            document.getElementById(actId).innerHTML =
+                '<button type="button" onclick="_confirmRefundLink(true)" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Verlinken, Differenz (+' + diff.toFixed(2).replace('.', ',') + ' €) bleibt offen</button>' +
+                '<button type="button" onclick="_confirmRefundLink(false)" class="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded hover:bg-slate-50">Verlinken + Zahlung als abgeschlossen markieren</button>' +
+                '<button type="button" onclick="document.getElementById(\'' + panelId + '\').classList.add(\'hidden\')" class="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-600">Abbrechen</button>';
+        } else {
+            // Over-refund: |neg| > pos
+            document.getElementById(textId).textContent =
+                'Neg. Betrag −' + fmt(negativBetrag) + ' € übersteigt Zahlung +' + fmt(positivBetrag) + ' € (Differenz ' + Math.abs(diff).toFixed(2).replace('.', ',') + ' €). Trotzdem verlinken?';
+            document.getElementById(actId).innerHTML =
+                '<button type="button" onclick="_confirmRefundLink(false)" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Ja, verlinken</button>' +
+                '<button type="button" onclick="document.getElementById(\'' + panelId + '\').classList.add(\'hidden\')" class="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-600">Abbrechen</button>';
+        }
+        document.getElementById(panelId).classList.remove('hidden');
+    }
+}
+
+function _confirmRefundLink(keepOrigOpen) {
+    const mode = _pendingLinkMode;
+    const panelId = mode === 'refund' ? 'refund-discrepancy' : 'lzn-discrepancy';
+    document.getElementById(panelId).classList.add('hidden');
+    _doRefundLink(_pendingLinkForm, keepOrigOpen);
+}
+
+function _doRefundLink(form, keepOrigOpen) {
+    const data = new FormData(form);
+    const headers = {'Content-Type': 'application/x-www-form-urlencoded', 'X-Fetch': 'true'};
+    if (keepOrigOpen) headers['X-Keep-Original-Open'] = 'true';
+    fetch('/abgleich/refund-link', {
+        method: 'POST',
+        headers: headers,
+        body: new URLSearchParams(data)
+    })
+    .then(() => {
+        closeRefundLink();
+        closeLinkZuNegativ();
+        // Always remove the refund (negative) row
+        const refundId = data.get('refund_id');
+        const origId   = data.get('original_id');
+        const refundRow = document.getElementById('buchung-' + refundId);
+        if (refundRow) refundRow.remove();
+        // Only remove orig row if not keeping it open
+        if (!keepOrigOpen) {
+            const origRow = document.getElementById('buchung-' + origId);
+            if (origRow) origRow.remove();
+        }
+    });
+}
+
+// ── Verlinkung lösen ──────────────────────────────────────────────────────────
+function unlinkRefund(refundId, name, betrag) {
+    const fmt = v => v.toFixed(2).replace('.', ',');
+    if (!confirm('Verlinkung von ' + (name || '') + ' (' + fmt(Math.abs(parseFloat(betrag))) + ' €) wirklich lösen?')) return;
+    fetch('/abgleich/refund-unlink/' + refundId, {
+        method: 'POST',
+        headers: {'X-Fetch': 'true'}
+    })
+    .then(() => location.reload());
+}
+
+// ── Pin-Toggle für Buchungen ───────────────────────────────────────────────────
+function togglePinBuchung(buchungId, btn) {
+    fetch('/abgleich/buchung-pinnen/' + buchungId, {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        const row = document.getElementById('buchung-' + buchungId);
+        const svg = btn.querySelector('svg');
+        if (data.gepinnt) {
+            btn.classList.remove('text-slate-300', 'hover:text-red-400');
+            btn.classList.add('text-red-500');
+            btn.title = 'Flag entfernen';
+            svg.setAttribute('fill', 'currentColor');
+            row.classList.add('border-l-4', 'border-red-500');
+            row.classList.remove('bg-yellow-50', 'border-yellow-400', 'border-amber-400');
+        } else {
+            btn.classList.remove('text-red-500');
+            btn.classList.add('text-slate-300', 'hover:text-red-400');
+            btn.title = 'Flaggen (später prüfen)';
+            svg.setAttribute('fill', 'none');
+            row.classList.remove('border-l-4', 'border-red-500');
+        }
+    });
+}
+
+// ── Reaktivieren (ignorierte Buchungen) ───────────────────────────────────────
+function reaktiviereBuchung(buchungId) {
+    fetch('/abgleich/buchung-reaktivieren/' + buchungId, {
+        method: 'POST',
+        headers: {'X-Fetch': 'true'}
+    })
+    .then(() => {
+        const row = document.getElementById('ignoriert-' + buchungId);
+        if (row) row.remove();
+    });
+}
+
+// ── Batch-Auswahl ─────────────────────────────────────────────────────────────
+function updateBatchBar() {
+    const selected = document.querySelectorAll('.buchung-checkbox:checked');
+    const bar = document.getElementById('batch-bar');
+    if (selected.length > 0) {
+        document.getElementById('batch-count').textContent = selected.length + ' ausgewählt';
+        bar.classList.remove('hidden');
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+function clearBatchSelection() {
+    document.querySelectorAll('.buchung-checkbox').forEach(cb => cb.checked = false);
+    document.querySelectorAll('#select-all-pos, #select-all-neg').forEach(cb => cb.checked = false);
+    document.getElementById('batch-bar').classList.add('hidden');
+}
+function toggleSelectAll(group) {
+    const master = document.getElementById('select-all-' + group);
+    document.querySelectorAll('[data-group="' + group + '"] .buchung-checkbox').forEach(cb => {
+        cb.checked = master.checked;
+    });
+    updateBatchBar();
+}
+
+// ── Tabs & Split-View ─────────────────────────────────────────────────────────
+function switchTab(tabName, btn) {
+    document.querySelectorAll('.tab-text-btns .tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const c = document.getElementById('abgleich-container');
+    if (!c.classList.contains('split-mode')) {
+        document.getElementById('tab-erwartungen').style.display = tabName === 'erwartungen' ? 'block' : 'none';
+        document.getElementById('tab-buchungen').style.display = tabName === 'buchungen' ? 'block' : 'none';
+    }
+}
+function toggleSplit() {
+    const c = document.getElementById('abgleich-container');
+    const btn = document.getElementById('split-btn');
+    const isSplit = c.classList.toggle('split-mode');
+    if (isSplit) {
+        document.getElementById('tab-erwartungen').style.display = 'block';
+        document.getElementById('tab-buchungen').style.display = 'block';
+        btn.classList.add('text-blue-700');
+        btn.style.borderColor = '#3b82f6';
+        btn.style.background = '#eff6ff';
+    } else {
+        btn.classList.remove('text-blue-700');
+        btn.style.borderColor = 'transparent';
+        btn.style.background = 'transparent';
+        const activeTab = document.querySelector('.tab-text-btns .tab-btn.active');
+        if (activeTab && activeTab.textContent.includes('Erwartungen')) {
+            document.getElementById('tab-erwartungen').style.display = 'block';
+            document.getElementById('tab-buchungen').style.display = 'none';
+        } else {
+            document.getElementById('tab-erwartungen').style.display = 'none';
+            document.getElementById('tab-buchungen').style.display = 'block';
+        }
+    }
+    localStorage.setItem('abgleich-split', isSplit ? '1' : '0');
+}
+function filterSplit(q) {
+    q = q.toLowerCase().trim();
+    filterErwartungenTabelle(q);
+    filterFreieBuchungen(q);
+}
+(function() {
+    if (localStorage.getItem('abgleich-split') === '1') {
+        const c = document.getElementById('abgleich-container');
+        if (c) {
+            c.classList.add('split-mode');
+            document.getElementById('tab-erwartungen').style.display = 'block';
+            document.getElementById('tab-buchungen').style.display = 'block';
+            const btn = document.getElementById('split-btn');
+            if (btn) {
+                btn.classList.add('text-blue-700');
+                btn.style.borderColor = '#3b82f6';
+                btn.style.background = '#eff6ff';
+            }
+        }
+    }
+})();
+</script>
+
+<!-- Buchung → Erwartung zuordnen Modal -->
+<div id="bz-overlay" class="hidden fixed inset-0 z-40" style="background:rgba(0,0,0,0.2)">
+    <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[720px] max-w-[95vw] bg-white rounded-xl shadow-xl flex flex-col" style="height:75vh;max-height:82vh">
+        <div class="flex justify-between items-start p-4 border-b border-slate-100 flex-shrink-0">
+            <div class="flex-1 min-w-0">
+                <!-- Mit Vorschlag: Schüler-Info wie in erster Spalte -->
+                <div id="bz-header-student" class="hidden">
+                    <div class="text-sm font-semibold text-slate-900">
+                        <span id="bz-header-name"></span><span id="bz-header-kontoinhaber" class="text-xs text-indigo-400 font-normal ml-1 hidden"></span>
+                    </div>
+                    <div id="bz-header-klasse" class="text-xs text-slate-500 mt-0.5"></div>
+                    <div id="bz-header-id" class="text-xs text-slate-400"></div>
+                    <div id="bz-buchung-info" class="text-xs text-slate-400 mt-1 pt-1 border-t border-slate-100"></div>
+                </div>
+                <!-- Ohne Vorschlag: Standard-Titel -->
+                <div id="bz-header-fallback">
+                    <p class="font-medium text-slate-900">Zahlung einer Erwartung zuordnen</p>
+                    <p id="bz-buchung-info-fallback" class="text-xs text-slate-500 mt-0.5"></p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0 ml-4">
+                <div class="text-right">
+                    <div class="font-semibold text-green-700" id="bz-betrag-value"></div>
+                    <div class="text-xs text-slate-400">Zahlung</div>
+                </div>
+                <button onclick="closeBuchungZuordnen()" class="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+            </div>
+        </div>
+        <div class="px-4 pt-3 flex-shrink-0">
+            <input id="bz-search" type="text" placeholder="Name, Klasse oder ID suchen…"
+                   oninput="filterBzErwartungen(this.value)"
+                   class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+        </div>
+        <div class="overflow-y-auto flex-1 p-4">
+            <table class="min-w-full divide-y divide-slate-100 text-sm">
+                <thead class="bg-slate-50 sticky top-0">
+                    <tr>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Schüler_in</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Klasse</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Monat</th>
+                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Erwartet</th>
+                        <th class="px-3 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100" id="bz-tbody">
+                    {% for e in erwartungen if e.status in ('offen', 'teilweise') %}
+                    <tr class="bz-row hover:bg-slate-50"
+                        data-name="{{ e.schueler.voller_name | lower }}"
+                        data-klasse="{{ (e.schueler.klasse or '') | lower }}"
+                        data-id="{{ (e.schueler.sheet_id or '') | lower }}">
+                        <td class="px-3 py-2 font-medium text-slate-900">
+                            {{ e.schueler.voller_name }}
+                            {% if e.schueler.kontoinhaber and e.schueler.kontoinhaber.strip() != e.schueler.voller_name.strip() %}
+                            <span class="text-xs text-indigo-400 font-normal ml-1">({{ e.schueler.kontoinhaber }})</span>
+                            {% endif %}
+                            <span class="block text-xs text-slate-400">{{ e.schueler.sheet_id or '' }}</span>
+                        </td>
+                        <td class="px-3 py-2 text-slate-500 text-xs">{{ e.schueler.klasse or '—' }}</td>
+                        <td class="px-3 py-2 text-slate-500 text-xs whitespace-nowrap">{{ e.monat }}</td>
+                        <td class="px-3 py-2 text-right font-medium text-slate-900 whitespace-nowrap">{{ "%.2f"|format(e.erwarteter_betrag) }} €</td>
+                        <td class="px-3 py-2 text-right">
+                            <form class="bz-form" method="post" action="{{ url_for('zuordnung_manuell') }}">
+                                <input type="hidden" name="erwartung_id" value="{{ e.id }}">
+                                <input type="hidden" name="buchung_id" class="bz-bid" value="">
+                                <input type="hidden" name="aktion" value="voll">
+                                <button type="submit" class="px-3 py-1 text-white rounded text-xs transition"
+                                        style="background:#036dd1;"
+                                        onmouseover="this.style.background='#0258a8'"
+                                        onmouseout="this.style.background='#036dd1'">
+                                    Zuordnen
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <!-- Bereits bezahlte Erwartungen -->
+            {% set _bz_zugeordnet = erwartungen | selectattr('status', 'equalto', 'zugeordnet') | list %}
+            {% if _bz_zugeordnet %}
+            <div class="mt-3 border-t border-slate-100 pt-2">
+                <button type="button" onclick="document.getElementById('bz-zugeordnete-tbody').classList.toggle('hidden')"
+                        class="text-xs text-slate-500 hover:text-slate-700 underline">
+                    Bereits bezahlte Erwartungen ({{ _bz_zugeordnet|length }}) ein-/ausblenden
+                </button>
+                <table class="min-w-full divide-y divide-slate-100 text-sm mt-1">
+                    <tbody id="bz-zugeordnete-tbody" class="hidden divide-y divide-slate-100 opacity-60">
+                        {% for e in _bz_zugeordnet %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-3 py-2 font-medium text-slate-500">
+                                {{ e.schueler.voller_name }}
+                                <span class="block text-xs text-slate-400">{{ e.schueler.sheet_id or '' }}</span>
+                            </td>
+                            <td class="px-3 py-2 text-slate-400 text-xs">{{ e.schueler.klasse or '—' }}</td>
+                            <td class="px-3 py-2 text-slate-400 text-xs whitespace-nowrap">{{ e.monat }}</td>
+                            <td class="px-3 py-2 text-right font-medium text-slate-400 whitespace-nowrap">{{ "%.2f"|format(e.erwarteter_betrag) }} €</td>
+                            <td class="px-3 py-2 text-right">
+                                <form class="bz-form" method="post" action="{{ url_for('zuordnung_manuell') }}">
+                                    <input type="hidden" name="erwartung_id" value="{{ e.id }}">
+                                    <input type="hidden" name="buchung_id" class="bz-bid" value="">
+                                    <input type="hidden" name="aktion" value="voll">
+                                    <button type="submit" class="px-3 py-1 bg-slate-400 text-white rounded text-xs hover:bg-slate-500">
+                                        Zuordnen
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+let _bzBuchungId = null;
+
+function openBuchungZuordnen(buchungId, auftraggeber, betrag, schuelerInfo) {
+    _bzBuchungId = buchungId;
+    document.querySelectorAll('.bz-bid').forEach(inp => inp.value = buchungId);
+    document.getElementById('bz-betrag-value').textContent = '+' + betrag.toFixed(2).replace('.', ',') + ' €';
+
+    const studentDiv = document.getElementById('bz-header-student');
+    const fallbackDiv = document.getElementById('bz-header-fallback');
+
+    if (schuelerInfo && schuelerInfo.name) {
+        studentDiv.classList.remove('hidden');
+        fallbackDiv.classList.add('hidden');
+        document.getElementById('bz-header-name').textContent = schuelerInfo.name;
+        const kontoEl = document.getElementById('bz-header-kontoinhaber');
+        if (schuelerInfo.kontoinhaber && schuelerInfo.kontoinhaber !== schuelerInfo.name) {
+            kontoEl.textContent = '(' + schuelerInfo.kontoinhaber + ')';
+            kontoEl.classList.remove('hidden');
+        } else {
+            kontoEl.textContent = '';
+            kontoEl.classList.add('hidden');
+        }
+        document.getElementById('bz-header-klasse').textContent = schuelerInfo.klasse || '';
+        document.getElementById('bz-header-id').textContent = schuelerInfo.sheet_id ? 'ID: ' + schuelerInfo.sheet_id : '';
+        document.getElementById('bz-buchung-info').textContent = (auftraggeber || '—') + ' · +' + betrag.toFixed(2).replace('.', ',') + ' €';
+    } else {
+        studentDiv.classList.add('hidden');
+        fallbackDiv.classList.remove('hidden');
+        document.getElementById('bz-buchung-info-fallback').textContent = (auftraggeber || '—') + ' · +' + betrag.toFixed(2).replace('.', ',') + ' €';
+    }
+
+    const s = document.getElementById('bz-search');
+    s.value = '';
+    filterBzErwartungen('');
+    document.getElementById('bz-overlay').classList.remove('hidden');
+    s.focus();
+}
+
+function closeBuchungZuordnen() {
+    document.getElementById('bz-overlay').classList.add('hidden');
+    _bzBuchungId = null;
+}
+
+function filterBzErwartungen(q) {
+    const lq = q.toLowerCase();
+    document.querySelectorAll('#bz-tbody .bz-row').forEach(row => {
+        const match = !lq ||
+            row.dataset.name.includes(lq) ||
+            row.dataset.klasse.includes(lq) ||
+            (row.dataset.id || '').includes(lq);
+        row.style.display = match ? '' : 'none';
+    });
+}
+
+document.getElementById('bz-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeBuchungZuordnen();
+});
+</script>
+{% endblock %}

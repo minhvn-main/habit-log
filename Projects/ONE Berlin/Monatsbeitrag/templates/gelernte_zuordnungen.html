@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Lernmuster{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<header class="bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between sticky top-0 z-10 -mx-6 -mt-6 mb-6" style="box-shadow: 0 2px 10px rgba(0,0,0,0.04);">
+    <div>
+        <h1 class="text-xl font-bold text-slate-900">Lernmuster</h1>
+        <p class="text-sm text-slate-400 mt-0.5">Gespeicherte Erkennungsmuster für den Auto-Abgleich</p>
+    </div>
+    <div class="text-center">
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Muster gelernt</p>
+        <p class="text-lg font-bold text-slate-900" style="font-family:'DM Mono',monospace;">{{ eintraege|length }}</p>
+    </div>
+</header>
+
+<!-- Manuell anlegen -->
+<details class="mb-6 bg-white rounded-xl border border-slate-100 shadow-sm">
+    <summary class="px-4 py-3 text-sm font-medium text-slate-700 cursor-pointer hover:text-slate-900 select-none">
+        + Muster manuell anlegen
+    </summary>
+    <div class="px-4 pb-4 pt-2 border-t border-slate-100">
+        <form method="post" action="{{ url_for('gelernte_zuordnung_anlegen') }}" class="flex flex-wrap gap-3 items-end">
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Schüler_in *</label>
+                <select name="schueler_id" required
+                        class="px-3 py-2 border border-slate-200 rounded-lg text-sm min-w-[180px] focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+                    <option value="">— auswählen —</option>
+                    {% for s in schueler_liste %}
+                    <option value="{{ s.id }}">{{ s.voller_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">IBAN</label>
+                <input type="text" name="iban" placeholder="DE12 3456 ..." maxlength="34"
+                       class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono w-52 focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Auftraggeber-Muster <span class="text-slate-400">(normalisiert, optional)</span></label>
+                <input type="text" name="auftraggeber_muster" placeholder="z.B. mueller"
+                       class="px-3 py-2 border border-slate-200 rounded-lg text-sm w-48 focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+            </div>
+            <button type="submit"
+                    class="px-4 py-2 text-white rounded-lg text-sm font-medium transition"
+                    style="background:#036dd1;"
+                    onmouseover="this.style.background='#0258a8'"
+                    onmouseout="this.style.background='#036dd1'">
+                Anlegen
+            </button>
+        </form>
+        <p class="text-xs text-slate-400 mt-2">Mindestens IBAN oder Auftraggeber-Muster erforderlich. Auftraggeber-Muster wird kleingeschrieben gespeichert (z.B. "mueller" für "Müller").</p>
+    </div>
+</details>
+
+{% if eintraege %}
+<div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+    <table class="min-w-full divide-y divide-slate-100">
+        <thead class="bg-slate-50">
+            <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Schüler_in</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">IBAN</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Name-Muster (normalisiert)</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Erstellt am</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Aktion</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100" id="lernmuster-tbody">
+            {% for eintrag in eintraege %}
+            <tr id="lernmuster-{{ eintrag.id }}" class="hover:bg-slate-50 transition">
+                <td class="px-4 py-3">
+                    <a href="{{ url_for('schueler_detail', schueler_id=eintrag.schueler.id) }}"
+                       class="text-sm font-medium hover:underline" style="color:#036dd1;">
+                        {{ eintrag.schueler.voller_name }}
+                    </a>
+                    <span class="block text-xs text-slate-400">{{ eintrag.schueler.klasse or '' }}</span>
+                </td>
+                <td class="px-4 py-3 text-sm text-slate-600 font-mono">
+                    {{ eintrag.iban or '—' }}
+                </td>
+                <td class="px-4 py-3 text-sm text-slate-600">
+                    {{ eintrag.auftraggeber_muster or '—' }}
+                </td>
+                <td class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">
+                    {{ eintrag.erstellt_am | format_dt }}
+                </td>
+                <td class="px-4 py-3 text-right">
+                    <form method="post"
+                          action="{{ url_for('gelernte_zuordnung_loeschen', eintrag_id=eintrag.id) }}"
+                          hx-post="{{ url_for('gelernte_zuordnung_loeschen', eintrag_id=eintrag.id) }}"
+                          hx-target="#lernmuster-{{ eintrag.id }}"
+                          hx-swap="outerHTML"
+                          onsubmit="return confirm('Muster für {{ eintrag.schueler.voller_name }} löschen?')">
+                        <button type="submit"
+                                class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition">
+                            Löschen
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="text-sm text-slate-500 mt-3">{{ eintraege | length }} Muster gespeichert</p>
+{% else %}
+<div class="bg-white rounded-xl shadow-sm border border-slate-100 p-8 text-center text-slate-500">
+    <p class="text-lg font-medium mb-1">Keine gelernten Muster vorhanden</p>
+    <p class="text-sm">Muster werden automatisch erstellt, wenn manuelle Zuordnungen bestätigt werden.</p>
+</div>
+{% endif %}
+{% endblock %}

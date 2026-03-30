@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}Schüler_innen{% endblock %}
+
+{% block content %}
+
+{# Macro: Altersgruppe-Badge #}
+{% macro kategorie_badge(s) %}
+{% set kat = s.alterskategorie or '' %}
+{% if kat == 'Minis' %}
+<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-orange-100 text-orange-700">{{ kat }}</span>
+{% elif kat == 'Kids' %}
+<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-sky-100 text-sky-700">{{ kat }}</span>
+{% elif kat == 'Juniors' %}
+<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-100 text-emerald-700">{{ kat }}</span>
+{% elif kat == 'Adults' %}
+<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-100 text-violet-700">{{ kat }}</span>
+{% elif kat == 'Originals' %}
+<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">{{ kat }}</span>
+{% else %}
+<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">{{ s.alterskategorie or '—' }}</span>
+{% endif %}
+{% endmacro %}
+
+<!-- Header -->
+<header class="bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between sticky top-0 z-10 -mx-6 -mt-6 mb-6" style="box-shadow: 0 2px 10px rgba(0,0,0,0.04);">
+    <div>
+        <h1 class="text-xl font-bold text-slate-900">Schüler_innen</h1>
+        <p class="text-sm text-slate-400 mt-0.5">Mitglieder Verwaltung</p>
+    </div>
+    <div class="flex gap-4">
+        <div class="text-center">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Schüler</p>
+            <p class="text-lg font-bold text-slate-900" style="font-family:'DM Mono',monospace;">{{ schueler_stats_gesamt }}</p>
+        </div>
+        <div class="text-center">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Aktiv</p>
+            <p class="text-lg font-bold text-emerald-700" style="font-family:'DM Mono',monospace;">{{ schueler_stats_aktiv }}</p>
+        </div>
+        <div class="text-center">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Kündigung</p>
+            <p class="text-lg font-bold text-amber-700" style="font-family:'DM Mono',monospace;">{{ schueler_stats_ki }}</p>
+        </div>
+        <div class="text-center">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Gekündigt</p>
+            <p class="text-lg font-bold text-slate-600" style="font-family:'DM Mono',monospace;">{{ schueler_stats_gkd }}</p>
+        </div>
+    </div>
+</header>
+
+<!-- Filter Section -->
+<div class="bg-white rounded-xl border border-slate-100 shadow-sm p-5 mb-6">
+<form method="get" class="flex flex-wrap gap-2 items-center">
+    <input type="text" name="suche" value="{{ suche }}" placeholder="Name, E-Mail oder ID…"
+           oninput="filterTableDebounced(this.value)"
+           class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-700 focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none w-52">
+
+    <select name="status" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-700 focus:ring-2 focus:ring-[#036dd1] outline-none">
+        <option value="" {% if not status_filter %}selected{% endif %}>Alle Status</option>
+        <option value="aktiv" {% if status_filter == 'aktiv' %}selected{% endif %}>Schüler_in</option>
+        <option value="kuendigung_initiiert" {% if status_filter == 'kuendigung_initiiert' %}selected{% endif %}>Kündigung initiiert</option>
+        <option value="gekuendigt" {% if status_filter == 'gekuendigt' %}selected{% endif %}>Gekündigt</option>
+    </select>
+
+    <select name="kategorie" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-700 focus:ring-2 focus:ring-[#036dd1] outline-none">
+        <option value="" {% if not kategorie_filter %}selected{% endif %}>Alle Gruppen</option>
+        <option value="Minis" {% if kategorie_filter == 'Minis' %}selected{% endif %}>Minis</option>
+        <option value="Kids" {% if kategorie_filter == 'Kids' %}selected{% endif %}>Kids</option>
+        <option value="Juniors" {% if kategorie_filter == 'Juniors' %}selected{% endif %}>Juniors</option>
+        <option value="Adults" {% if kategorie_filter == 'Adults' %}selected{% endif %}>Adults</option>
+        <option value="Originals" {% if kategorie_filter == 'Originals' %}selected{% endif %}>Originals</option>
+    </select>
+
+    <select name="klasse" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-700 focus:ring-2 focus:ring-[#036dd1] outline-none">
+        <option value="">Alle Klassen</option>
+        {% for k in klassen %}
+        <option value="{{ k }}" {% if klasse_filter == k %}selected{% endif %}>{{ k }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="zuordnung" onchange="this.form.submit()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-700 focus:ring-2 focus:ring-[#036dd1] outline-none">
+        <option value="" {% if not zuordnung_filter %}selected{% endif %}>Alle (Zahlung)</option>
+        <option value="offen" {% if zuordnung_filter == 'offen' %}selected{% endif %}>Mit offener Zahlung</option>
+        <option value="vollstaendig" {% if zuordnung_filter == 'vollstaendig' %}selected{% endif %}>Aktuell</option>
+    </select>
+
+    <select name="iban" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-700 focus:ring-2 focus:ring-[#036dd1] outline-none">
+        <option value="" {% if not iban_filter %}selected{% endif %}>Alle (IBAN)</option>
+        <option value="ohne" {% if iban_filter == 'ohne' %}selected{% endif %}>Ohne IBAN</option>
+    </select>
+
+    <button type="submit"
+            class="px-4 py-2 text-white rounded-lg text-sm font-medium hover:opacity-90 transition"
+            style="background-color:#036dd1;">
+        Filtern
+    </button>
+    {% if status_filter or klasse_filter or kategorie_filter or suche or zuordnung_filter or iban_filter %}
+    <a href="{{ url_for('schueler_liste') }}" class="text-sm text-slate-400 hover:text-slate-600">× Zurücksetzen</a>
+    {% endif %}
+</form>
+</div>
+
+<!-- Tabelle -->
+<div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto">
+    <table class="min-w-full divide-y divide-slate-100 text-sm">
+        <thead>
+            <tr class="text-left text-xs font-medium text-slate-400 uppercase tracking-wide bg-slate-50">
+                {% set cols = [
+                    ('sheet_id', 'ID'),
+                    ('name',     'Name'),
+                    ('alter',    'Alter'),
+                    ('mitglied', 'Mitglied seit'),
+                    ('klasse',   'Klasse'),
+                    ('beitrag',  'Beitrag'),
+                    (None,       'Zahlungsart'),
+                    (None,       'IBAN'),
+                    ('status',   'Status'),
+                    (None,       'Zahlung'),
+                ] %}
+                {% for col_key, col_label in cols %}
+                <th class="px-4 py-3 whitespace-nowrap">
+                    {% if col_key %}
+                        {% set next_dir = 'desc' if (sort_field == col_key and sort_dir == 'asc') else 'asc' %}
+                        <a href="{{ url_for('schueler_liste', sort=col_key, dir=next_dir, status=status_filter, klasse=klasse_filter, kategorie=kategorie_filter, suche=suche, zuordnung=zuordnung_filter) }}"
+                           class="flex items-center gap-1 hover:text-slate-700 {% if sort_field == col_key %}text-slate-700{% endif %}">
+                            {{ col_label }}
+                            {% if sort_field == col_key %}
+                                <span class="text-[#036dd1]">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>
+                            {% endif %}
+                        </a>
+                    {% else %}
+                        {{ col_label }}
+                    {% endif %}
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+            {% for s in schueler %}
+            <tr class="hover:bg-slate-50 cursor-pointer transition-colors"
+                data-search="{{ ((s.sheet_id or '') ~ ' ' ~ s.voller_name ~ ' ' ~ (s.email or '') ~ ' ' ~ (s.kontoinhaber or '')) | lower }}"
+                onclick="window.location='{{ url_for('schueler_detail', schueler_id=s.id) }}'">
+
+                <!-- ID -->
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">{{ s.sheet_id or '—' }}</td>
+
+                <!-- Name + Neu-Badge -->
+                <td class="px-4 py-3">
+                    <div class="font-medium text-slate-900 flex items-center gap-1.5 whitespace-nowrap">
+                        {{ s.voller_name }}
+                        {% if s.ist_neu %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">Neu</span>
+                        {% endif %}
+                    </div>
+                    {% if s.email %}
+                    <div class="text-xs text-slate-400">{{ s.email }}</div>
+                    {% endif %}
+                    {% if s.kontoinhaber and s.kontoinhaber.strip() != s.voller_name.strip() %}
+                    <div class="text-[11px] text-indigo-400 mt-0.5">KI: {{ s.kontoinhaber }}</div>
+                    {% endif %}
+                </td>
+
+                <!-- Alter -->
+                <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap font-mono">
+                    {{ s.alter ~ ' J.' if s.alter else '—' }}
+                </td>
+
+                <!-- Mitglied seit -->
+                <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap font-mono">
+                    {% set seit = s.mitglied_seit or s.startdatum %}
+                    {{ seit.strftime('%d.%m.%Y') if seit else '—' }}
+                </td>
+
+                <!-- Klasse (Altersgruppe-Farbe) -->
+                <td class="px-4 py-3 whitespace-nowrap w-24">
+                    {{ kategorie_badge(s) }}
+                </td>
+
+                <!-- Beitrag -->
+                <td class="px-4 py-3 whitespace-nowrap" onclick="event.stopPropagation()">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-medium text-slate-900 font-mono text-xs" id="beitrag-val-{{ s.id }}">{{ "%.2f"|format(s.aktiver_beitrag) }} €</span>
+                        {% if s.beitrag_override is not none %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">Manuell</span>
+                        {% endif %}
+                        <button onclick="toggleBeitragEdit({{ s.id }})"
+                                class="text-slate-300 hover:text-slate-500 transition"
+                                title="Beitrag bearbeiten">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="beitrag-edit-{{ s.id }}" class="hidden mt-1">
+                        <form method="post" action="{{ url_for('schueler_beitrag_update', schueler_id=s.id) }}"
+                              class="flex gap-1 items-center">
+                            <input type="number" name="beitrag_override" step="0.01" min="0"
+                                   value="{{ s.beitrag_override if s.beitrag_override is not none else s.monatsbeitrag }}"
+                                   class="w-20 px-2 py-1 border border-slate-200 rounded text-xs font-mono"
+                                   onclick="event.stopPropagation()">
+                            <button type="submit" class="px-2 py-1 text-white rounded text-xs" style="background-color:#036dd1;">✓</button>
+                            <button type="button" onclick="toggleBeitragEdit({{ s.id }}); event.stopPropagation()"
+                                    class="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs hover:bg-slate-200">✕</button>
+                        </form>
+                    </div>
+                </td>
+
+                <!-- Zahlungsart -->
+                <td class="px-4 py-3 whitespace-nowrap">
+                    {% if s.zahlungsart == 'sepa' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">SEPA</span>
+                    {% elif s.zahlungsart == 'ueberweisung' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">Überweisung</span>
+                    {% else %}
+                    <span class="text-xs text-slate-300">—</span>
+                    {% endif %}
+                </td>
+
+                <!-- IBAN -->
+                <td class="px-4 py-3 text-slate-600 font-mono text-xs whitespace-nowrap">{{ s.iban or '—' }}</td>
+
+                <!-- Status -->
+                <td class="px-4 py-3 whitespace-nowrap">
+                    {% if s.status == 'aktiv' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">Schüler_in</span>
+                    {% elif s.status == 'kuendigung_initiiert' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">Kündigung initiiert</span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-50 text-red-600 border border-red-100">Gekündigt</span>
+                    {% endif %}
+                </td>
+
+                <!-- Zahlung (offene Erwartungen) -->
+                <td class="px-4 py-3" onclick="event.stopPropagation()">
+                    {% set offen = s.offene_erwartungen_anzahl %}
+                    {% if offen == 0 %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">Aktuell</span>
+                    {% elif offen == 1 %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700">1 offen</span>
+                    {% elif offen == 2 %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-orange-50 text-orange-700">2 offen</span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-50 text-red-600">{{ offen }} offen</span>
+                    {% endif %}
+                </td>
+
+            </tr>
+            {% endfor %}
+            {% if not schueler %}
+            <tr>
+                <td colspan="10" class="px-4 py-10 text-center text-sm text-slate-400">Keine Schüler_innen gefunden.</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function toggleBeitragEdit(id) {
+    document.getElementById('beitrag-edit-' + id).classList.toggle('hidden');
+}
+
+let filterTimeout;
+function filterTableDebounced(q) {
+    clearTimeout(filterTimeout);
+    filterTimeout = setTimeout(() => filterTable(q), 300);
+}
+
+function filterTable(q) {
+    q = q.toLowerCase().trim();
+    document.querySelectorAll('tbody tr[data-search]').forEach(tr => {
+        tr.style.display = (!q || tr.dataset.search.includes(q)) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}
