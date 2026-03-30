@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}{{ schueler.voller_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="{{ url_for('schueler_liste') }}" class="text-sm hover:underline" style="color:#036dd1;">&larr; Zurück zur Liste</a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Stammdaten -->
+    <div class="lg:col-span-1">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">{{ schueler.voller_name }}</h2>
+
+            <dl class="space-y-3 text-sm">
+                <div>
+                    <dt class="text-slate-500">Klasse</dt>
+                    <dd class="font-medium text-slate-900">{{ schueler.klasse or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-slate-500">Status</dt>
+                    <dd>
+                        {% if schueler.status == 'aktiv' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Aktiv</span>
+                        {% elif schueler.status == 'kuendigung_initiiert' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Kündigung initiiert</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Gekündigt</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-slate-500">E-Mail</dt>
+                    <dd class="font-medium text-slate-900">{{ schueler.email or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-slate-500">Telefon</dt>
+                    <dd class="font-medium text-slate-900">{{ schueler.telefon or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-slate-500">Zahlungsart</dt>
+                    <dd class="font-medium text-slate-900">
+                        {% if schueler.zahlungsart == 'sepa' %}SEPA Lastschrift{% elif schueler.zahlungsart == 'ueberweisung' %}Überweisung{% else %}—{% endif %}
+                    </dd>
+                </div>
+                {% if schueler.iban %}
+                <div>
+                    <dt class="text-slate-500">IBAN</dt>
+                    <dd class="font-mono text-slate-900">{{ schueler.iban }}</dd>
+                </div>
+                {% endif %}
+                {% if schueler.kontoinhaber %}
+                <div>
+                    <dt class="text-slate-500">Kontoinhaber</dt>
+                    <dd class="font-medium text-slate-900">{{ schueler.kontoinhaber }}</dd>
+                </div>
+                {% endif %}
+                <div>
+                    <dt class="text-slate-500">User-ID</dt>
+                    <dd class="font-mono text-slate-600 text-xs">{{ schueler.sheet_id or '—' }}</dd>
+                </div>
+                {% if schueler.geburtsdatum %}
+                <div>
+                    <dt class="text-slate-500">Alter</dt>
+                    <dd class="font-medium text-slate-900">{{ schueler.alter }} Jahre ({{ schueler.geburtsdatum.strftime('%d.%m.%Y') }})</dd>
+                </div>
+                {% endif %}
+                {% set seit = schueler.mitglied_seit or schueler.startdatum %}
+                {% if seit %}
+                <div>
+                    <dt class="text-slate-500">Mitglied seit</dt>
+                    <dd class="font-medium text-slate-900">{{ seit.strftime('%d.%m.%Y') }}</dd>
+                </div>
+                {% endif %}
+                {% if schueler.kuendigungsdatum %}
+                <div>
+                    <dt class="text-slate-500">Gekündigt zum</dt>
+                    <dd class="font-medium text-red-700">{{ schueler.kuendigungsdatum.strftime('%d.%m.%Y') }}</dd>
+                </div>
+                {% endif %}
+            </dl>
+
+            <!-- Beitrag anpassen -->
+            <div class="mt-6 pt-4 border-t border-slate-100">
+                <h3 class="text-sm font-semibold text-slate-700 mb-2">Monatsbeitrag</h3>
+                <p class="text-2xl font-bold text-slate-900 mb-3">{{ "%.2f"|format(schueler.aktiver_beitrag) }} €</p>
+                {% if schueler.beitrag_override is not none %}
+                <p class="text-xs text-yellow-600 mb-3">Manuell überschrieben (Standard: {{ "%.2f"|format(schueler.monatsbeitrag or 0) }} €)</p>
+                {% endif %}
+                <form method="post" action="{{ url_for('schueler_beitrag_update', schueler_id=schueler.id) }}" class="flex gap-2">
+                    <input type="number" step="0.01" name="beitrag_override" placeholder="Neuer Betrag"
+                           value="{{ schueler.beitrag_override if schueler.beitrag_override is not none else '' }}"
+                           class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#036dd1] focus:border-[#036dd1] outline-none">
+                    <button type="submit"
+                            class="px-3 py-2 text-white rounded-lg text-sm font-medium transition"
+                            style="background:#036dd1;"
+                            onmouseover="this.style.background='#0258a8'"
+                            onmouseout="this.style.background='#036dd1'">
+                        Setzen
+                    </button>
+                </form>
+                <p class="text-xs text-slate-400 mt-1">Leer lassen = Standard aus Beitragsplan</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zahlungshistorie -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100">
+            <div class="px-6 py-4 border-b border-slate-100">
+                <h2 class="text-lg font-semibold text-slate-900">Zahlungshistorie</h2>
+            </div>
+            <table class="min-w-full divide-y divide-slate-100">
+                <thead class="bg-white border-b border-slate-100">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Monat</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Erwartet</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Zuordnung</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Notiz</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for e in erwartungen %}
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ e.monat }}</td>
+                        <td class="px-4 py-3 text-sm text-slate-900">{{ "%.2f"|format(e.erwarteter_betrag) }} €</td>
+                        <td class="px-4 py-3">
+                            {% if e.status == 'zugeordnet' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Bezahlt</span>
+                            {% elif e.status == 'offen' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Offen</span>
+                            {% elif e.status == 'markiert' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Markiert</span>
+                            {% elif e.status == 'erlassen' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">Erlassen</span>
+                            {% elif e.status == 'teilweise' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">Teilweise</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-slate-500">
+                            {% set z = e.zuordnungen.filter_by(bestaetigt=True).first() or e.zuordnungen.first() %}
+                            {% if z %}
+                                <div class="font-medium text-slate-800">{{ z.buchung.auftraggeber or '—' }}</div>
+                                <div class="text-xs text-slate-500">
+                                    {{ z.buchung.buchungstag.strftime('%d.%m.%Y') }} &middot;
+                                    {{ "%.2f"|format(z.buchung.betrag) }} €
+                                    {% if z.buchung.iban %}&middot; {{ z.buchung.iban }}{% endif %}
+                                </div>
+                                <div class="text-xs text-slate-400">
+                                    {{ z.typ }}{% if not z.bestaetigt %} (unbestätigt){% endif %}
+                                </div>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-slate-500">{{ e.notiz or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not erwartungen %}
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-sm text-slate-500">Noch keine Beitragserwartungen vorhanden.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

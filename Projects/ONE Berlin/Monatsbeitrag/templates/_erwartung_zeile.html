@@ -1,0 +1,18 @@
+{# HTMX partial: ersetzt eine einzelne Zeile im Abgleich (outerHTML swap) #}
+{% set _e_best_z = e.zuordnungen.filter_by(bestaetigt=True).first() %}
+{% set _e_top_z = _e_best_z or (e.zuordnungen.filter_by(bestaetigt=False).all() | sort(attribute='konfidenz', reverse=True) | first) %}
+{% if e.status == 'zugeordnet' %}{% set _row_state = 'row-confirmed' %}
+{% elif e.status == 'teilweise' %}{% set _row_state = 'row-partial' %}
+{% elif e.status == 'markiert' %}{% set _row_state = 'row-flagged' %}
+{% elif e.status == 'erlassen' %}{% set _row_state = 'row-waived' %}
+{% elif _e_top_z and _e_top_z.konfidenz >= 80 %}{% set _row_state = 'row-proposal-high' %}
+{% elif _e_top_z and _e_top_z.konfidenz >= 60 %}{% set _row_state = 'row-proposal-mid' %}
+{% else %}{% set _row_state = 'row-open' %}
+{% endif %}
+<tr id="erwartung-{{ e.id }}"
+    data-status="{{ e.status }}"
+    data-konfidenz="{% if _e_top_z %}{% if _e_top_z.konfidenz >= 80 %}hoch{% elif _e_top_z.konfidenz >= 60 %}mittel{% else %}niedrig{% endif %}{% else %}ohne{% endif %}"
+    data-search="{{ e.schueler.voller_name | lower }} {{ (e.schueler.klasse or '') | lower }} {{ (e.schueler.sheet_id or '') | lower }} {{ e.monat }} {{ (e.schueler.kontoinhaber or '') | lower }}"
+    class="match-row {{ _row_state }}{% if e.gepinnt %} row-pinned{% endif %}">
+    {% include "_erwartung_zeile_inhalt.html" %}
+</tr>

@@ -1,0 +1,257 @@
+{% set z_bestaetigt = e.zuordnungen.filter_by(bestaetigt=True).first() %}
+{% set z_vorschlag = e.zuordnungen.filter_by(bestaetigt=False).all() | sort(attribute='konfidenz', reverse=True) | first %}
+{% set z = z_bestaetigt or z_vorschlag %}
+{% set alle_zuordnungen = e.zuordnungen.all() %}
+{% set summe_zugeordnet = alle_zuordnungen | sum(attribute='buchung.betrag') if alle_zuordnungen else 0 %}
+{% set _mn = {'01':'Jan','02':'Feb','03':'Mär','04':'Apr','05':'Mai','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Okt','11':'Nov','12':'Dez'} %}
+{% set _mp = e.monat.split('-') %}
+{% set _monat_pill = _mn.get(_mp[1], _mp[1]) + ' ' + _mp[0][2:] %}
+
+<!-- Spalte 1: Schüler / Klasse -->
+<td class="px-3 py-2.5" style="min-width:120px">
+    <div>
+        <div class="flex items-start gap-1.5 flex-wrap">
+            <a href="{{ url_for('schueler_detail', schueler_id=e.schueler.id) }}"
+               class="text-[13px] font-medium text-slate-800 hover:underline">{{ e.schueler.voller_name }}</a>
+            {% if e.erster_monat %}
+            <span class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 shrink-0" title="Erster Monat — Betrag ggf. anteilig">1. Mo</span>
+            {% endif %}
+        </div>
+        {% if e.schueler.kontoinhaber and e.schueler.kontoinhaber.strip() != e.schueler.voller_name.strip() %}
+        <div class="text-[11px] text-indigo-400">KI: {{ e.schueler.kontoinhaber }}</div>
+        {% endif %}
+        <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            {% if e.schueler.klasse %}
+            <span class="text-[11px] text-slate-400">{{ e.schueler.klasse }}</span>
+            {% endif %}
+            {% if e.status == 'zugeordnet' %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">✓</span>
+            {% elif e.status == 'markiert' %}
+            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-600 text-white">⚑ Markiert</span>
+            {% elif e.status == 'erlassen' %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-600">Erlassen</span>
+            {% elif e.status == 'teilweise' %}
+            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">⚠ Teil</span>
+            {% endif %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-600 shrink-0">{{ _monat_pill }}</span>
+        </div>
+        {% if e.notiz %}
+        <div class="text-[11px] text-slate-400 italic truncate max-w-[160px] mt-0.5" title="{{ e.notiz }}">{{ e.notiz }}</div>
+        {% endif %}
+    </div>
+</td>
+
+<!-- Spalte 2: Arrow -->
+<td class="px-1 py-2.5 text-slate-300 w-6">
+    <svg class="w-3.5 h-3.5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+    </svg>
+</td>
+
+<!-- Spalte 3: Buchung -->
+<td class="px-3 py-2.5" style="min-width:180px">
+    {% if alle_zuordnungen | length > 1 %}
+        {% for zz in alle_zuordnungen %}
+        <div class="{% if not loop.first %}mt-1 pt-1 border-t border-slate-100{% endif %}">
+            <div class="text-[13px] font-medium text-slate-700">{{ zz.buchung.auftraggeber or '—' }}</div>
+            <div class="text-[11px] text-slate-400 font-mono whitespace-nowrap">{{ zz.buchung.buchungstag.strftime('%d.%m.%Y') }} · {{ "%.2f"|format(zz.buchung.betrag) }} €</div>
+        </div>
+        {% endfor %}
+        {% if e.status == 'teilweise' %}
+        <div class="mt-1 text-[11px] text-orange-600">
+            Erwartet: {{ "%.2f"|format(e.erwarteter_betrag) }} € → {{ "%.2f"|format(summe_zugeordnet) }} € erhalten
+        </div>
+        {% endif %}
+    {% elif z %}
+        <div class="text-[13px] font-medium text-slate-700">{{ z.buchung.auftraggeber or '—' }}</div>
+        <div class="text-[11px] text-slate-400 font-mono whitespace-nowrap">{{ z.buchung.buchungstag.strftime('%d.%m.%Y') }} · {{ "%.2f"|format(z.buchung.betrag) }} €</div>
+        {% if z.buchung.verwendungszweck %}
+        <div class="text-[11px] text-slate-300 font-mono truncate max-w-[220px]" title="{{ z.buchung.verwendungszweck }}">{{ z.buchung.verwendungszweck }}</div>
+        {% endif %}
+    {% else %}
+        <span class="text-[12px] text-slate-400">Erwartet: <strong class="text-slate-600">{{ "%.2f"|format(e.erwarteter_betrag) }} €</strong></span>
+    {% endif %}
+</td>
+
+<!-- Spalte 4: Erwartet -->
+<td class="px-3 py-2.5 whitespace-nowrap">
+    <span class="text-[12px] font-mono text-slate-600">{{ "%.2f"|format(e.erwarteter_betrag) }} €</span>
+</td>
+
+<!-- Spalte 5: Konfidenz mit Indicator -->
+<td class="px-3 py-2.5">
+    {% if z %}
+        {% set _typ_label = {
+            'auto_sepa_iban': 'SEPA+IBAN',
+            'auto_mandats': 'SEPA',
+            'auto_gelernt': 'Gelernt',
+            'auto_iban_name_voll': 'IBAN+Name',
+            'auto_iban_name_teil': 'IBAN+Name',
+            'auto_iban_nn_beide': 'IBAN+Nachname',
+            'auto_kontoinhaber': 'Kontoinhaber',
+            'auto_name_auftr': 'Name (Auftr.)',
+            'auto_name_vz': 'Name (VZ)',
+            'manuell': 'Manuell',
+        } %}
+        {% if z.typ == 'manuell' %}
+        <span class="conf-manual text-xs px-2 py-0.5 rounded font-medium inline-flex items-center gap-1">
+            <svg class="w-2.5 h-2.5 text-indigo-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>
+            Manuell
+        </span>
+        {% elif z.konfidenz >= 80 %}
+        <span class="conf-high text-xs px-2 py-0.5 rounded font-medium inline-flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-blue-600"></span>{{ z.konfidenz | int }}
+        </span>
+        {% elif z.konfidenz >= 60 %}
+        <span class="conf-mid text-xs px-2 py-0.5 rounded font-medium inline-flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-yellow-500"></span>{{ z.konfidenz | int }}
+        </span>
+        {% else %}
+        <span class="conf-low text-xs px-2 py-0.5 rounded font-medium inline-flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-orange-500"></span>{{ z.konfidenz | int }}
+        </span>
+        {% endif %}
+        {% if z.typ != 'manuell' %}
+        <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-0.5">
+            {{ _typ_label.get(z.typ, z.typ) }}
+            {% if z.typ == 'auto_gelernt' %}
+            <form method="post" action="{{ url_for('gelernte_zuordnung_loeschen_by_buchung') }}"
+                  hx-post="{{ url_for('gelernte_zuordnung_loeschen_by_buchung') }}"
+                  hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML"
+                  class="inline"
+                  onsubmit="return confirm('Lernmuster löschen?')">
+                <input type="hidden" name="schueler_id" value="{{ e.schueler_id }}">
+                <input type="hidden" name="buchung_id" value="{{ z.buchung_id }}">
+                <input type="hidden" name="erwartung_id" value="{{ e.id }}">
+                <button type="submit" class="text-slate-400 hover:text-red-500 leading-none" title="Lernmuster löschen">✕</button>
+            </form>
+            {% endif %}
+        </div>
+        {% else %}
+        {% if z.typ == 'auto_gelernt' %}
+        <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-0.5">
+            <form method="post" action="{{ url_for('gelernte_zuordnung_loeschen_by_buchung') }}"
+                  hx-post="{{ url_for('gelernte_zuordnung_loeschen_by_buchung') }}"
+                  hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML"
+                  class="inline"
+                  onsubmit="return confirm('Lernmuster löschen?')">
+                <input type="hidden" name="schueler_id" value="{{ e.schueler_id }}">
+                <input type="hidden" name="buchung_id" value="{{ z.buchung_id }}">
+                <input type="hidden" name="erwartung_id" value="{{ e.id }}">
+                <button type="submit" class="text-slate-400 hover:text-red-500 leading-none" title="Lernmuster löschen">✕</button>
+            </form>
+        </div>
+        {% endif %}
+        {% endif %}
+    {% else %}
+        <span class="text-[11px] text-slate-400">—</span>
+    {% endif %}
+</td>
+
+<!-- Spalte 6: Flags -->
+<td class="px-2 py-2.5">
+    {% if z %}
+    <div class="flex flex-col gap-0.5">
+        {% if z.betrag_stimmt is not none %}
+            {% if z.betrag_stimmt %}
+            <span class="flag-chip flag-ok">€✓</span>
+            {% else %}
+            <span class="flag-chip flag-err" title="Erwartet: {{ '%.2f'|format(z.erwartung.erwarteter_betrag) }} €">€✗</span>
+            {% endif %}
+        {% else %}
+            <span class="flag-chip" style="background:#f1f5f9;color:#94a3b8" title="Erster Monat">€?</span>
+        {% endif %}
+        {% if z.monat_stimmt is not none %}
+            {% if z.monat_stimmt %}
+            <span class="flag-chip flag-ok"><svg class="w-3 h-3 inline align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>✓</span>
+            {% else %}
+            <span class="flag-chip flag-err" title="Erwartet: {{ z.erwartung.monat }}"><svg class="w-3 h-3 inline align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>✗</span>
+            {% endif %}
+        {% else %}
+            <span class="flag-chip" style="background:#f1f5f9;color:#94a3b8" title="Erster Monat"><svg class="w-3 h-3 inline align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>?</span>
+        {% endif %}
+    </div>
+    {% endif %}
+</td>
+
+<!-- Spalte 7: Aktionen -->
+<td class="px-3 py-2.5 text-right">
+    <div class="flex justify-end gap-1 items-center">
+        <!-- Flag (immer zuerst) -->
+        <form method="post" action="{{ url_for('erwartung_pinnen', erwartung_id=e.id) }}"
+              hx-post="{{ url_for('erwartung_pinnen', erwartung_id=e.id) }}"
+              hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML">
+            <button type="submit"
+                    class="p-1.5 {% if e.gepinnt %}text-red-500{% else %}text-slate-300 hover:text-red-400{% endif %} rounded"
+                    title="{% if e.gepinnt %}Flag entfernen{% else %}Flaggen{% endif %}">
+                <svg class="w-4 h-4" fill="{% if e.gepinnt %}currentColor{% else %}none{% endif %}" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6H10.5l-1-1H5a2 2 0 00-2 2zm0 0h2.5"/>
+                </svg>
+            </button>
+        </form>
+
+        {% if z and not z.bestaetigt %}
+        <!-- Bestätigen -->
+        <form method="post" action="{{ url_for('zuordnung_bestaetigen', zuordnung_id=z.id) }}"
+              hx-post="{{ url_for('zuordnung_bestaetigen', zuordnung_id=z.id) }}"
+              hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML">
+            <button type="submit" class="p-1.5 text-green-600 hover:bg-green-50 rounded" title="Bestätigen">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+            </button>
+        </form>
+        <!-- Ablehnen -->
+        <form method="post" action="{{ url_for('zuordnung_ablehnen', zuordnung_id=z.id) }}"
+              hx-post="{{ url_for('zuordnung_ablehnen', zuordnung_id=z.id) }}"
+              hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML">
+            <button type="submit" class="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Ablehnen">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 105.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                </svg>
+            </button>
+        </form>
+        {% elif e.status == 'zugeordnet' and z %}
+        <!-- Zuordnung lösen -->
+        <form method="post" action="{{ url_for('zuordnung_ablehnen', zuordnung_id=z.id) }}"
+              hx-post="{{ url_for('zuordnung_ablehnen', zuordnung_id=z.id) }}"
+              hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML"
+              onsubmit="return confirm('Zuordnung wirklich lösen?')">
+            <button type="submit" class="text-xs text-slate-400 hover:text-red-500 transition-colors underline underline-offset-2" title="Zuordnung lösen">lösen</button>
+        </form>
+        {% elif e.status in ('markiert', 'erlassen') %}
+        <!-- Zurücksetzen auf offen -->
+        <form method="post" action="{{ url_for('erwartung_status', erwartung_id=e.id) }}"
+              hx-post="{{ url_for('erwartung_status', erwartung_id=e.id) }}"
+              hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML">
+            <input type="hidden" name="status" value="offen">
+            <button type="submit" class="px-2 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded border border-slate-200">
+                Zurücksetzen
+            </button>
+        </form>
+        {% endif %}
+
+        {% if e.status in ('offen', 'teilweise') %}
+        <!-- Manuell zuordnen -->
+        <button type="button"
+                onclick='openManuell({{ e.id }}, {{ e.schueler.voller_name | tojson }}, {{ e.erwarteter_betrag }}, {{ summe_zugeordnet }}, {kontoinhaber:{{ (e.schueler.kontoinhaber or "") | tojson }},klasse:{{ (e.schueler.klasse or "") | tojson }},sheet_id:{{ (e.schueler.sheet_id or "") | tojson }}})'
+                class="p-1.5 text-slate-400 hover:text-[#036dd1] hover:bg-blue-50 rounded" title="Manuell zuordnen">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+            </svg>
+        </button>
+        <!-- Erlassen -->
+        <form method="post" action="{{ url_for('erwartung_status', erwartung_id=e.id) }}"
+              hx-post="{{ url_for('erwartung_status', erwartung_id=e.id) }}"
+              hx-target="#erwartung-{{ e.id }}" hx-swap="outerHTML">
+            <input type="hidden" name="status" value="erlassen">
+            <button type="submit" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded" title="Erlassen">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </button>
+        </form>
+        {% endif %}
+
+    </div>
+</td>
