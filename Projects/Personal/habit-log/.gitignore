@@ -28,3 +28,9 @@ dist-ssr
 
 # Superpowers brainstorm sessions
 .superpowers/
+
+# Generated service worker files (vite-plugin-pwa)
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
