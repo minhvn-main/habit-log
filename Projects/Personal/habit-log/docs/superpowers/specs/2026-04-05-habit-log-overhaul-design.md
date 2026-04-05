@@ -1,6 +1,6 @@
 # Habit Log — Overhaul Design Spec
 **Date:** 2026-04-05
-**Status:** Awaiting approval
+**Status:** Approved — name: Habit Log, icon: Ring Check
 
 ---
 
@@ -179,8 +179,23 @@ public/workbox-*.js
 public/workbox-*.js.map
 ```
 
-### Icon generation
-Use a single source SVG or PNG → generate 192px, 512px, 180px sizes with a tool like `sharp` or [realfavicongenerator.net](https://realfavicongenerator.net).
+### App name
+Keep **Habit Log** (current name). No rename needed.
+
+### Icon
+**Ring Check** — a progress ring (partial arc in `#2563eb`) with a white checkmark inside, on a deep navy (`#1a2e4a`) rounded-rectangle background.
+
+Generate from the SVG spec:
+```svg
+<!-- 80×80 artboard, scale up for each size -->
+<circle cx="40" cy="40" r="30" stroke="rgba(59,130,246,0.2)" stroke-width="5"/>
+<circle cx="40" cy="40" r="30" stroke="#3b82f6" stroke-width="5"
+  stroke-dasharray="157" stroke-dashoffset="40"
+  stroke-linecap="round" transform="rotate(-90 40 40)"/>
+<polyline points="25,40 35,52 55,28" stroke="white" stroke-width="5"
+  stroke-linecap="round" stroke-linejoin="round"/>
+```
+Background fill: `#1a2e4a` (deep navy). Output sizes: 512×512, 192×192, 180×180 (apple-touch-icon).
 
 ### Verification
 1. `npm run build` — service worker only generates on production build
