@@ -8,33 +8,33 @@ interface PageLayoutProps {
   headerRight?: ReactNode;
 }
 
-export const PageLayout = ({ 
-  children, 
-  title, 
-  subtitle, 
-  action, 
-  headerRight 
+export const PageLayout = ({
+  children,
+  title,
+  subtitle,
+  action,
+  headerRight
 }: PageLayoutProps) => {
   return (
     <div className="min-h-screen bg-background">
-      <div className="p-4 pb-24 space-y-6 max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="pb-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-              {subtitle && (
-                <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              {headerRight}
-              {action}
-            </div>
+      {/* Sticky header with frosted glass on scroll */}
+      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm border-b border-border/50 px-4 py-3">
+        <div className="flex items-start justify-between gap-4 max-w-3xl mx-auto">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+            {subtitle && (
+              <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {headerRight}
+            {action}
           </div>
         </div>
-        
-        {/* Page content */}
+      </div>
+
+      {/* Page content */}
+      <div className="p-4 pb-24 space-y-6 max-w-3xl mx-auto">
         {children}
       </div>
     </div>

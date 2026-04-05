@@ -122,7 +122,7 @@ export const TodayHabitCard = ({ habit, enableSkipState = true }: TodayHabitCard
     <div
       className={cn(
         "rounded-2xl shadow-sm overflow-hidden transition-colors",
-        toggleState === "done" && "bg-emerald-50/60 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800",
+        toggleState === "done" && "bg-emerald-50/40 dark:bg-emerald-900/10 border border-emerald-200/60 dark:border-emerald-800/60 opacity-75",
         toggleState === "skipped" && "bg-amber-50/40 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800",
         toggleState === "default" && "bg-card border border-border"
       )}
@@ -140,7 +140,7 @@ export const TodayHabitCard = ({ habit, enableSkipState = true }: TodayHabitCard
               onClick={handleToggleCycle}
               className={cn(
                 "w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0",
-                toggleState === "default" && "border-border text-muted-foreground hover:border-primary hover:ring-2 hover:ring-primary/20 active:ring-4 active:ring-primary/20",
+                toggleState === "default" && "border-muted-foreground/40 text-muted-foreground ring-2 ring-muted/40 hover:border-primary hover:ring-primary/30 active:ring-4 active:ring-primary/20",
                 toggleState === "done" && "border-emerald-500 bg-emerald-500 text-white hover:ring-2 hover:ring-emerald-200 dark:hover:ring-emerald-800",
                 toggleState === "skipped" && "border-amber-500 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 hover:ring-2 hover:ring-amber-200 dark:hover:ring-amber-800"
               )}
