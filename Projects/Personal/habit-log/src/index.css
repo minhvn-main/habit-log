@@ -1,0 +1,426 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 6.7%;
+    --card: 0 0% 97.6%;
+    --card-foreground: 0 0% 6.7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 6.7%;
+    --primary: 214 84% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 95.3%;
+    --secondary-foreground: 0 0% 40%;
+    --muted: 0 0% 95.3%;
+    --muted-foreground: 0 0% 50%;
+    --accent: 0 0% 95.3%;
+    --accent-foreground: 0 0% 29.4%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 0 0% 87.8%;
+    --input: 0 0% 87.8%;
+    --ring: 0 0% 66.7%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  .dark {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 11%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 11%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 214 84% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 214 84% 56%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+/* Mobile-optimized spacing scale */
+.mobile-container {
+  @apply max-w-md mx-auto bg-background min-h-screen;
+}
+
+/* Touch-friendly tap targets */
+.touch-target {
+  @apply min-w-[44px] min-h-[44px] flex items-center justify-center;
+}
+
+/* Card styles with better separation */
+.habit-card {
+  @apply bg-card border border-border rounded-2xl p-4 shadow-sm transition-all duration-200 hover:shadow-md mb-4 relative cursor-pointer min-h-[160px];
+}
+
+.habit-card-compact {
+  @apply bg-card border border-border rounded-xl p-3 shadow-sm transition-all duration-200 hover:shadow-md mb-2 relative min-h-[120px];
+}
+
+/* Enhanced KPI tiles */
+.kpi-tile {
+  @apply bg-muted border border-border rounded-2xl p-6 text-center shadow-sm;
+}
+
+/* Progress summary card */
+.progress-summary {
+  @apply bg-muted border border-border rounded-2xl p-6 mb-6 flex items-center gap-4;
+}
+
+/* Habit color classes with vibrant accents */
+.habit-color-green {
+  @apply bg-emerald-500;
+}
+
+.habit-color-blue {
+  @apply bg-blue-500;
+}
+
+.habit-color-orange {
+  @apply bg-orange-500;
+}
+
+.habit-color-purple {
+  @apply bg-purple-500;
+}
+
+.habit-color-pink {
+  @apply bg-pink-500;
+}
+
+.habit-color-yellow {
+  @apply bg-yellow-500;
+}
+
+.habit-stripe-green {
+  @apply bg-emerald-500;
+}
+
+.habit-stripe-blue {
+  @apply bg-blue-500;
+}
+
+.habit-stripe-orange {
+  @apply bg-orange-500;
+}
+
+.habit-stripe-purple {
+  @apply bg-purple-500;
+}
+
+.habit-stripe-pink {
+  @apply bg-pink-500;
+}
+
+.habit-stripe-yellow {
+  @apply bg-yellow-500;
+}
+
+/* Frequency pills with distinct colors */
+.frequency-pill-daily {
+  @apply inline-flex items-center px-3 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full border border-purple-200;
+}
+
+.frequency-pill-weekly {
+  @apply inline-flex items-center px-3 py-1 text-xs font-medium bg-indigo-100 text-indigo-800 rounded-full border border-indigo-200;
+}
+
+.frequency-pill-custom {
+  @apply inline-flex items-center px-3 py-1 text-xs font-medium bg-orange-100 text-orange-800 rounded-full border border-orange-200;
+}
+
+.frequency-pill-as-needed {
+  @apply inline-flex items-center px-3 py-1 text-xs font-medium bg-teal-100 text-teal-800 rounded-full border border-teal-200;
+}
+
+/* Goal pills with distinct styling */
+.goal-pill {
+  @apply inline-flex items-center px-3 py-1 text-xs font-medium bg-gray-50 text-gray-600 rounded border border-gray-200;
+}
+
+.goal-pill.indefinite {
+  @apply bg-gray-50 text-gray-500 border-gray-200 rounded;
+}
+
+/* Stats pills */
+.stat-pill-done {
+  @apply inline-flex items-center px-3 py-1.5 text-sm font-medium bg-emerald-50 text-emerald-600 rounded border border-emerald-200;
+}
+
+.stat-pill-skipped {
+  @apply inline-flex items-center px-3 py-1.5 text-sm font-medium bg-red-50 text-red-600 rounded border border-red-200;
+}
+
+/* Neutral section backgrounds - no colored backgrounds */
+.section-active {
+  @apply bg-muted rounded-2xl;
+}
+
+.section-paused {
+  @apply bg-muted rounded-2xl;
+}
+
+.section-finished {
+  @apply bg-muted rounded-2xl;
+}
+
+.section-completed {
+  @apply bg-muted rounded-2xl;
+}
+
+.section-archived {
+  @apply bg-muted/80 rounded-2xl;
+}
+
+/* Section headers with neutral styling - black text, gray background */
+.section-header {
+  @apply bg-secondary rounded-xl p-4 mb-4 cursor-pointer hover:bg-accent transition-colors;
+}
+
+.section-header-active {
+  @apply text-foreground font-bold;
+}
+
+.section-header-paused {
+  @apply text-foreground font-bold;
+}
+
+.section-header-finished {
+  @apply text-foreground font-bold;
+}
+
+.section-header-completed {
+  @apply text-foreground font-bold;
+}
+
+.section-header-archived {
+  @apply text-muted-foreground font-bold;
+}
+
+/* Progress bars */
+.progress-bar {
+  @apply h-2 bg-gray-200 rounded-full overflow-hidden;
+}
+
+.progress-bar-fill {
+  @apply h-full bg-gradient-to-r from-primary to-primary/80 transition-all duration-300;
+}
+
+.progress-bar-indefinite {
+  @apply h-2 bg-gray-200 rounded-full overflow-hidden;
+}
+
+.progress-bar-indefinite-fill {
+  @apply h-full bg-gray-400 transition-all duration-300;
+}
+
+/* Toggle icons with larger touch area and fixed size - circular shape */
+.toggle-icon-default {
+  @apply w-12 h-12 rounded-full bg-gray-100 border-2 border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors cursor-pointer flex-shrink-0;
+}
+
+.toggle-icon-done {
+  @apply w-12 h-12 rounded-full bg-emerald-500 border-2 border-emerald-500 flex items-center justify-center text-white hover:bg-emerald-600 transition-colors cursor-pointer flex-shrink-0;
+}
+
+.toggle-icon-skipped {
+  @apply w-12 h-12 rounded-full bg-red-500 border-2 border-red-500 flex items-center justify-center text-white hover:bg-red-600 transition-colors cursor-pointer flex-shrink-0;
+}
+
+/* Bottom navigation enhancement */
+.bottom-nav-active {
+  @apply text-primary font-semibold relative;
+}
+
+.bottom-nav-active::after {
+  @apply content-[''] absolute -top-2 left-1/2 transform -translate-x-1/2 w-6 h-1 bg-primary rounded-full;
+}
+
+/* Goal cards */
+.goal-card {
+  @apply bg-card border border-border rounded-2xl p-4 shadow-sm transition-all duration-200 hover:shadow-md mb-4 cursor-pointer;
+}
+
+/* Calendar enhancements - enforce square aspect ratio */
+.calendar-day {
+  @apply relative w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center text-sm font-medium aspect-square;
+}
+
+.calendar-day.today {
+  @apply border-2 border-primary bg-primary/5;
+}
+
+.calendar-day.completed {
+  @apply bg-emerald-50 border-emerald-200;
+}
+
+.calendar-habit-indicator {
+  @apply absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 rounded-full;
+}
+
+/* Collapsible sections */
+.collapsible-section {
+  @apply border border-gray-200 rounded-2xl mb-4 overflow-hidden;
+}
+
+.collapsible-header {
+  @apply bg-gray-100 px-4 py-3 cursor-pointer hover:bg-gray-200 transition-colors flex items-center justify-between;
+}
+
+.collapsible-content {
+  @apply p-4 space-y-4;
+}
+
+/* Progress indicators */
+.progress-indicator-left {
+  @apply text-xs font-medium text-primary;
+}
+
+.progress-indicator-right {
+  @apply text-xs text-muted-foreground;
+}
+
+/* Person filter toggles with unique colors */
+.person-toggle {
+  @apply px-3 py-1 text-sm font-medium rounded-full border cursor-pointer transition-colors;
+}
+
+.person-toggle-active {
+  @apply text-white border-transparent;
+}
+
+.person-toggle-inactive {
+  @apply bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100;
+}
+
+/* Person color classes */
+.person-color-myself {
+  @apply bg-blue-500 text-white;
+}
+
+.person-color-alex {
+  @apply bg-green-500 text-white;
+}
+
+.person-color-sarah {
+  @apply bg-purple-500 text-white;
+}
+
+.person-color-custom-1 {
+  @apply bg-orange-500 text-white;
+}
+
+.person-color-custom-2 {
+  @apply bg-pink-500 text-white;
+}
+
+.person-color-custom-3 {
+  @apply bg-teal-500 text-white;
+}
+
+/* Improved stats display */
+.stats-container {
+  @apply text-center space-y-1;
+}
+
+.stats-done {
+  @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 rounded border border-emerald-200;
+}
+
+.stats-skipped {
+  @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-gray-50 text-gray-600 rounded border border-gray-200;
+}
+
+/* Page headers - ensure consistent sizing */
+.page-header {
+  @apply text-2xl font-bold text-foreground;
+}
+
+/* Calendar day indicators */
+.calendar-day-completed {
+  position: relative;
+}
+
+.calendar-day-completed::after,
+.calendar-day-skipped::after,
+.calendar-day-pending::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.calendar-day-completed::after {
+  background-color: #10b981; /* emerald-500 - perfect day */
+}
+
+.calendar-day-skipped::after {
+  background-color: #f59e0b; /* amber-500 - all accounted, some skipped */
+}
+
+.calendar-day-pending::after {
+  background-color: #eab308; /* yellow-500 - needs input */
+}
+
+/* Modal/Popup mobile overflow prevention */
+.modal-content-safe {
+  max-width: 100vw;
+  overflow-x: hidden;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+.modal-scroll-container {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.modal-text-wrap {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
