@@ -23,7 +23,7 @@ Three-part overhaul of the existing Habit Log app:
 - Add `.superpowers/` to `.gitignore`
 
 ### GitHub
-- Create repo `habit-log` under `minhvn` account (public)
+- Create repo `habit-log` under `minhvn-main` account (public)
 - Push main branch
 - No secrets, no env vars needed — safe to be public
 

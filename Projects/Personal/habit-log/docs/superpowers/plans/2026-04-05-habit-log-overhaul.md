@@ -735,13 +735,13 @@ Deploy to Vercel (or use an HTTPS preview URL). On iPhone:
 - [ ] **Step 4: GitHub push**
 
 ```bash
-git remote add origin https://github.com/minhvn/habit-log.git
+git remote add origin https://github.com/minhvn-main/habit-log.git
 git push -u origin main
 ```
 
 - [ ] **Step 5: Vercel connect**
 
-1. Go to vercel.com → New Project → Import from GitHub → `minhvn/habit-log`
+1. Go to vercel.com → New Project → Import from GitHub → `minhvn-main/habit-log`
 2. Framework Preset: Vite
 3. Build Command: `npm run build`
 4. Output Directory: `dist`
