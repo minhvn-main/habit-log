@@ -279,6 +279,26 @@ export const formatHabitDetailsLine = (habit: Habit, stats: HabitStats): string 
   return parts.join(" • ");
 };
 
+export const getRecentCompletionDots = (
+  habitId: string,
+  completions: HabitCompletion[],
+  days = 14
+): boolean[] => {
+  const result: boolean[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, "0"),
+      String(d.getDate()).padStart(2, "0"),
+    ].join("-");
+    result.push(completions.some(c => c.habitId === habitId && c.date === dateStr && c.completed));
+  }
+  return result;
+};
+
 // Get the date when a habit reached its goal (for "Goal reached" badge)
 export const getGoalCompletionDate = (habit: Habit, completions: HabitCompletion[]): string | null => {
   if (!habit.goalType || !habit.goalTarget) return null;

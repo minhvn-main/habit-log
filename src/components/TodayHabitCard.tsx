@@ -3,33 +3,13 @@ import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/contexts/AppContext";
 import { Habit } from "@/types";
-import { calculateHabitStats, getFrequencyDisplay } from "@/utils/habitStats";
+import { calculateHabitStats, getFrequencyDisplay, getRecentCompletionDots } from "@/utils/habitStats";
 import { cn } from "@/lib/utils";
 
 interface TodayHabitCardProps {
   habit: Habit;
   enableSkipState?: boolean;
 }
-
-const getRecentCompletionDots = (
-  habitId: string,
-  completions: { habitId: string; date: string; completed: boolean }[],
-  days = 14
-): boolean[] => {
-  const result: boolean[] = [];
-  const now = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dateStr = [
-      d.getFullYear(),
-      String(d.getMonth() + 1).padStart(2, "0"),
-      String(d.getDate()).padStart(2, "0"),
-    ].join("-");
-    result.push(completions.some(c => c.habitId === habitId && c.date === dateStr && c.completed));
-  }
-  return result;
-};
 
 const getTargetMicrotext = (habit: Habit): string => {
   if (habit.goalType === "consecutive-days" && habit.goalTarget) {
