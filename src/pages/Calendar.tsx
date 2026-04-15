@@ -12,40 +12,7 @@ import { Habit } from "@/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-
-// Helper: Check if a habit was due on a specific date
-const isHabitDueOnDate = (habit: Habit, date: Date): boolean => {
-  const dateStr = format(date, "yyyy-MM-dd");
-  
-  // Check if date is before habit's start date
-  if (habit.startDate && dateStr < habit.startDate) {
-    return false;
-  }
-  
-  const dayOfWeek = date.getDay();
-  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-  
-  switch (habit.frequency) {
-    case "daily":
-      return true;
-    case "weekly":
-      if (habit.weeklyDays && habit.weeklyDays.length > 0) {
-        return habit.weeklyDays.includes(dayNames[dayOfWeek]);
-      }
-      return true;
-    case "custom":
-      if (habit.customInterval) {
-        const startDate = habit.startDate ? new Date(habit.startDate) : new Date(habit.createdAt);
-        const daysSinceStart = Math.floor((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        return daysSinceStart >= 0 && daysSinceStart % habit.customInterval === 0;
-      }
-      return true;
-    case "as-needed":
-      return false; // Never blocks a perfect day
-    default:
-      return true;
-  }
-};
+import { isHabitDueOnDate } from "@/lib/habitSchedule";
 
 export const CalendarPage = () => {
   const { habits, habitCompletions } = useApp();

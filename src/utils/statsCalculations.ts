@@ -1,35 +1,6 @@
 import { Habit, HabitCompletion, Goal, Milestone } from "@/types";
 import { format, subDays, startOfWeek, endOfWeek, subWeeks, isWeekend, getDay } from "date-fns";
-
-// Check if a habit is due on a specific date
-const isHabitDueOnDate = (habit: Habit, date: Date): boolean => {
-  if (!habit.isActive || habit.archivedAt || habit.isPaused) return false;
-
-  const dateStr = format(date, "yyyy-MM-dd");
-  
-  // Check if date is before habit's start date
-  if (habit.startDate && dateStr < habit.startDate) {
-    return false;
-  }
-
-  const dayOfWeek = format(date, "EEEE").toLowerCase();
-
-  switch (habit.frequency) {
-    case "daily":
-      return true;
-    case "weekly":
-      return habit.weeklyDays?.includes(dayOfWeek) ?? false;
-    case "custom":
-      if (!habit.customInterval) return false;
-      const startDate = habit.startDate ? new Date(habit.startDate) : new Date(habit.createdAt);
-      const daysDiff = Math.floor((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      return daysDiff >= 0 && daysDiff % habit.customInterval === 0;
-    case "as-needed":
-      return true; // Always "due" for tracking purposes
-    default:
-      return false;
-  }
-};
+import { isHabitDueOnDate } from "@/lib/habitSchedule";
 
 // Calculate completion rate for a date range
 export const calculateWeekCompletionRate = (

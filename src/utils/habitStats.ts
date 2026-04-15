@@ -1,5 +1,6 @@
 
 import { Habit, HabitCompletion } from "@/types";
+import { isHabitDueToday, parseLocalDate } from "@/lib/habitSchedule";
 
 export interface HabitStats {
   completionRate: number;
@@ -83,14 +84,14 @@ export const calculateHabitStats = (habit: Habit, completions: HabitCompletion[]
       
     case "by-specific-date":
       if (habit.targetDate) {
-        const startDate = habit.startDate ? new Date(habit.startDate) : new Date(habit.createdAt);
-        const targetDate = new Date(habit.targetDate);
+        const startDate = habit.startDate
+          ? parseLocalDate(habit.startDate)
+          : new Date(habit.createdAt);
+        const targetDate = parseLocalDate(habit.targetDate);
         const today = new Date();
-        
         const totalDays = Math.floor((targetDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         const daysPassed = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         const daysRemaining = Math.floor((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        
         completionRate = Math.min(Math.round((daysPassed / totalDays) * 100), 100);
         daysLeft = Math.max(0, daysRemaining);
       }
@@ -312,37 +313,5 @@ export const getGoalCompletionDate = (habit: Habit, completions: HabitCompletion
   return null;
 };
 
-// Check if a habit is due today based on its frequency
-export const isHabitDueToday = (habit: Habit): boolean => {
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-  const todayDayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
-  
-  // Check if today is before habit's start date
-  if (habit.startDate && todayStr < habit.startDate) {
-    return false;
-  }
-  
-  switch (habit.frequency) {
-    case "daily":
-      return true;
-    case "weekly":
-      if (habit.weeklyDays && habit.weeklyDays.length > 0) {
-        const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-        const todayName = dayNames[todayDayOfWeek];
-        return habit.weeklyDays.includes(todayName);
-      }
-      return true; // If no specific days set, show it
-    case "custom":
-      if (habit.customInterval) {
-        const startDate = habit.startDate ? new Date(habit.startDate) : new Date(habit.createdAt);
-        const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        return daysSinceStart % habit.customInterval === 0;
-      }
-      return true;
-    case "as-needed":
-      return false; // User-initiated, not scheduled for today
-    default:
-      return true;
-  }
-};
+// Re-exported from shared utility for backwards compatibility
+export { isHabitDueToday };
