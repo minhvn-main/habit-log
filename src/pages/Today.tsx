@@ -37,6 +37,9 @@ export const Today = () => {
   
   // Split scheduled habits into "due today"
   const dueToday = scheduledHabits.filter(habit => isHabitDueToday(habit));
+
+  // Habits that are scheduled (non-as-needed) but not due today
+  const notDueToday = scheduledHabits.filter(habit => !isHabitDueToday(habit));
   
   // Get today's completions for progress calculation
   const getTodayCompletions = () => {
@@ -131,6 +134,21 @@ export const Today = () => {
         >
           {asNeededHabits.map(habit => (
             <TodayHabitCard key={habit.id} habit={habit} enableSkipState={settings.enableSkipState} />
+          ))}
+        </CollapsibleSection>
+      )}
+
+      {/* Not Due Today — collapsed by default */}
+      {settings.showNotDueToday && notDueToday.length > 0 && (
+        <CollapsibleSection
+          title="Not Due Today"
+          count={notDueToday.length}
+          sectionId="today-not-due"
+          variant="paused"
+          defaultCollapsed={true}
+        >
+          {notDueToday.map(habit => (
+            <TodayHabitCard key={habit.id} habit={habit} enableSkipState={false} />
           ))}
         </CollapsibleSection>
       )}
