@@ -13,9 +13,24 @@ import { isHabitFinished } from "@/utils/habitStats";
 import { Habit, HabitCompletion } from "@/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { SortableHabitCard } from "@/components/SortableHabitCard";
 
 export const Habits = () => {
-  const { habits, habitCompletions } = useApp();
+  const { habits, habitCompletions, reorderHabits } = useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
@@ -24,6 +39,7 @@ export const Habits = () => {
 
   type SortOption = { value: string; label: string };
   const sortOptions: SortOption[] = [
+    { value: 'manual', label: 'Manual order' },
     { value: 'creation', label: 'Creation date' },
     { value: 'startDate', label: 'Starting date' },
     { value: 'alphabetical', label: 'Alphabetical' },
@@ -40,6 +56,8 @@ export const Habits = () => {
   const sortHabits = (list: Habit[]): Habit[] => {
     return [...list].sort((a, b) => {
       switch (sortOrder) {
+        case 'manual':
+          return (a.order ?? 0) - (b.order ?? 0);
         case 'startDate':
           if (!a.startDate && !b.startDate) return 0;
           if (!a.startDate) return 1;
@@ -85,6 +103,21 @@ export const Habits = () => {
   
   const archivedHabits = habits.filter(habit => habit.archivedAt);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const sorted = sortHabits(activeHabits);
+    const oldIndex = sorted.findIndex(h => h.id === active.id);
+    const newIndex = sorted.findIndex(h => h.id === over.id);
+    const reordered = arrayMove(sorted, oldIndex, newIndex);
+    reorderHabits(reordered.map(h => h.id));
+  };
+
   return (
     <PageLayout
       title="My Habits"
@@ -106,17 +139,37 @@ export const Habits = () => {
           sectionId="active"
           variant="active"
         >
-          <div className="space-y-3">
-            {sortHabits(activeHabits).map(habit => (
-              <HabitListCard 
-                key={habit.id} 
-                habit={habit} 
-                completions={habitCompletions}
-                status="active"
-                onClick={() => setEditingHabit(habit)} 
-              />
-            ))}
-          </div>
+          {sortOrder === 'manual' ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext
+                items={sortHabits(activeHabits).map(h => h.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-3">
+                  {sortHabits(activeHabits).map(habit => (
+                    <SortableHabitCard
+                      key={habit.id}
+                      habit={habit}
+                      completions={habitCompletions}
+                      onClick={() => setEditingHabit(habit)}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div className="space-y-3">
+              {sortHabits(activeHabits).map(habit => (
+                <HabitListCard
+                  key={habit.id}
+                  habit={habit}
+                  completions={habitCompletions}
+                  status="active"
+                  onClick={() => setEditingHabit(habit)}
+                />
+              ))}
+            </div>
+          )}
         </CollapsibleSection>
       )}
 

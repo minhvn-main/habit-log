@@ -20,6 +20,7 @@ export interface Habit {
   createdAt: string;
   startDate?: string; // YYYY-MM-DD format - tracking starts from this date
   archivedAt?: string;
+  order?: number;
   // Weekly frequency settings
   weeklyDays?: string[]; // ['monday', 'tuesday', etc.]
   // Custom interval settings

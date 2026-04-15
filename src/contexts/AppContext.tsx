@@ -38,6 +38,8 @@ interface AppContextType {
   addCustomPerson: (name: string) => void;
   renamePerson: (oldName: string, newName: string) => void;
   
+  reorderHabits: (orderedIds: string[]) => void;
+
   // Reset functions
   resetProgress: () => void;
   factoryReset: () => void;
@@ -88,9 +90,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (loadedHabits) {
         const parsedHabits = JSON.parse(loadedHabits);
         // Migrate old habits: set startDate to createdAt date if missing
-        const migratedHabits = parsedHabits.map((habit: Habit) => ({
+        const migratedHabits = parsedHabits.map((habit: Habit, index: number) => ({
           ...habit,
-          startDate: habit.startDate || habit.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10)
+          startDate: habit.startDate || habit.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+          order: habit.order ?? index,
         }));
         setHabits(migratedHabits);
       }
@@ -140,6 +143,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       startDate: today, // Auto-set to today
+      order: habits.length,
     };
     setHabits(prev => [...prev, newHabit]);
   };
@@ -166,6 +170,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setHabits(prev => prev.map(habit =>
       habit.id === id ? { ...habit, isPaused: true, pausedAt: new Date().toISOString() } : habit
     ));
+  };
+
+  const reorderHabits = (orderedIds: string[]) => {
+    setHabits(prev =>
+      prev.map(habit => {
+        const idx = orderedIds.indexOf(habit.id);
+        return idx >= 0 ? { ...habit, order: idx } : habit;
+      })
+    );
   };
 
   const resumeHabit = (id: string) => {
@@ -399,6 +412,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     customPersons,
     addCustomPerson,
     renamePerson,
+    reorderHabits,
     resetProgress,
     factoryReset,
   };
