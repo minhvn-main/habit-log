@@ -14,35 +14,46 @@ export interface HabitStats {
 
 const calculateConsecutiveStreak = (completions: HabitCompletion[]): number => {
   if (completions.length === 0) return 0;
-  
-  // Get completed dates only, sorted descending (most recent first)
+
   const completedDates = completions
     .filter(c => c.completed)
     .map(c => c.date)
-    .sort((a, b) => b.localeCompare(a));
-  
+    .sort((a, b) => b.localeCompare(a)); // descending
+
   if (completedDates.length === 0) return 0;
-  
-  // Remove duplicates (in case of multiple completions on same day)
+
   const uniqueDates = [...new Set(completedDates)];
-  
-  let streak = 1; // Start with 1 for the most recent day
-  
+  const mostRecent = uniqueDates[0]; // "YYYY-MM-DD"
+
+  // Build today and yesterday as "YYYY-MM-DD" strings in local time
+  const now = new Date();
+  const todayStr = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayStr = [
+    yesterdayDate.getFullYear(),
+    String(yesterdayDate.getMonth() + 1).padStart(2, "0"),
+    String(yesterdayDate.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  // Streak is dead if last completion wasn't today or yesterday
+  if (mostRecent !== todayStr && mostRecent !== yesterdayStr) return 0;
+
+  let streak = 1;
   for (let i = 1; i < uniqueDates.length; i++) {
-    const currentDate = new Date(uniqueDates[i - 1]);
-    const previousDate = new Date(uniqueDates[i]);
-    
-    // Calculate difference in days
-    const diffInMs = currentDate.getTime() - previousDate.getTime();
-    const diffInDays = Math.round(diffInMs / (1000 * 60 * 60 * 24));
-    
-    if (diffInDays === 1) {
+    const curr = new Date(uniqueDates[i - 1] + "T00:00:00");
+    const prev = new Date(uniqueDates[i] + "T00:00:00");
+    const diffDays = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 1) {
       streak++;
     } else {
-      break; // Gap found, stop counting
+      break;
     }
   }
-  
   return streak;
 };
 
@@ -221,9 +232,15 @@ export const formatHabitDetailsLine = (habit: Habit, stats: HabitStats): string 
       break;
     case "weekly":
       if (habit.weeklyDays && habit.weeklyDays.length > 0) {
-        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-        const days = habit.weeklyDays.map(d => dayNames[d]).join(", ");
-        parts.push(days);
+        // weeklyDays stores full lowercase names: "monday", "tuesday", …
+        // Sort Mon→Sun (week starts Monday)
+        const ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+        const SHORT: Record<string, string> = {
+          monday: "Mon", tuesday: "Tue", wednesday: "Wed", thursday: "Thu",
+          friday: "Fri", saturday: "Sat", sunday: "Sun",
+        };
+        const sorted = [...habit.weeklyDays].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+        parts.push(sorted.map(d => SHORT[d] ?? d).join(", "));
       } else {
         parts.push("Weekly");
       }
