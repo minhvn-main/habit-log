@@ -13,6 +13,26 @@ interface HabitListCardProps {
   onClick: () => void;
 }
 
+const getRecentCompletionDots = (
+  habitId: string,
+  completions: { habitId: string; date: string; completed: boolean }[],
+  days = 14
+): boolean[] => {
+  const result: boolean[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, "0"),
+      String(d.getDate()).padStart(2, "0"),
+    ].join("-");
+    result.push(completions.some(c => c.habitId === habitId && c.date === dateStr && c.completed));
+  }
+  return result;
+};
+
 const getAccentColor = (status: HabitListCardProps['status']) => {
   switch (status) {
     case 'active': return 'bg-indigo-400';
@@ -145,6 +165,28 @@ export const HabitListCard = ({ habit, completions, status, onClick }: HabitList
             </div>
           )}
           
+          {/* Completion dots for by-specific-date */}
+          {habit.goalType === "by-specific-date" && (() => {
+            const dots = getRecentCompletionDots(habit.id, completions);
+            const doneCount = dots.filter(Boolean).length;
+            return (
+              <div className="space-y-1 pt-0.5">
+                <div className="flex gap-0.5 flex-wrap">
+                  {dots.map((done, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "w-2 h-2 rounded-full",
+                        done ? "bg-emerald-500" : "bg-muted"
+                      )}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">{doneCount} of last 14 days done</p>
+              </div>
+            );
+          })()}
+
           {/* Row 4: Stats + frequency */}
           <div className="flex items-center gap-4 text-sm border-t border-border pt-2 mt-2">
             <span className="text-emerald-600 dark:text-emerald-400">✓ {stats.totalDone}</span>

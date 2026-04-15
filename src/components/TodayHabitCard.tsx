@@ -11,6 +11,26 @@ interface TodayHabitCardProps {
   enableSkipState?: boolean;
 }
 
+const getRecentCompletionDots = (
+  habitId: string,
+  completions: { habitId: string; date: string; completed: boolean }[],
+  days = 14
+): boolean[] => {
+  const result: boolean[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, "0"),
+      String(d.getDate()).padStart(2, "0"),
+    ].join("-");
+    result.push(completions.some(c => c.habitId === habitId && c.date === dateStr && c.completed));
+  }
+  return result;
+};
+
 const getTargetMicrotext = (habit: Habit): string => {
   if (habit.goalType === "consecutive-days" && habit.goalTarget) {
     return `${habit.goalTarget}×`;
@@ -175,7 +195,7 @@ export const TodayHabitCard = ({ habit, enableSkipState = true }: TodayHabitCard
           {progressData && (
             <div className="pl-10 pt-1 space-y-1">
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-emerald-500 rounded-full transition-all"
                   style={{ width: `${progressData.percentage}%` }}
                 />
@@ -186,6 +206,28 @@ export const TodayHabitCard = ({ habit, enableSkipState = true }: TodayHabitCard
               </div>
             </div>
           )}
+
+          {/* Completion dots — only for by-specific-date */}
+          {habit.goalType === "by-specific-date" && (() => {
+            const dots = getRecentCompletionDots(habit.id, habitCompletions);
+            const doneCount = dots.filter(Boolean).length;
+            return (
+              <div className="pl-10 pt-0.5 space-y-1">
+                <div className="flex gap-0.5 flex-wrap">
+                  {dots.map((done, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "w-2 h-2 rounded-full",
+                        done ? "bg-emerald-500" : "bg-muted"
+                      )}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">{doneCount} of last 14 days done</p>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
