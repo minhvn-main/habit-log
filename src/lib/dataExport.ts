@@ -30,7 +30,7 @@ export function exportData(): void {
   a.href = url;
   a.download = `habit-log-export-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 export function importData(jsonText: string): { success: boolean; error?: string } {
@@ -41,7 +41,7 @@ export function importData(jsonText: string): { success: boolean; error?: string
     return { success: false, error: "Invalid JSON file." };
   }
 
-  if (parsed.version !== 1 || typeof parsed.data !== "object") {
+  if (parsed.version !== 1 || parsed.data === null || typeof parsed.data !== "object" || Array.isArray(parsed.data)) {
     return { success: false, error: "Unrecognised export format." };
   }
 

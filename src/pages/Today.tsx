@@ -22,16 +22,15 @@ export const Today = () => {
   const today = format(new Date(), "yyyy-MM-dd");
   
   // Get active habits (excluding finished ones)
-  const getActiveHabits = () => {
-    return habits.filter(habit => 
-      habit.isActive && 
-      !habit.archivedAt && 
-      !habit.isPaused && 
+  const activeHabits = useMemo(
+    () => habits.filter(habit =>
+      habit.isActive &&
+      !habit.archivedAt &&
+      !habit.isPaused &&
       !isHabitFinished(habit, habitCompletions)
-    );
-  };
-
-  const activeHabits = getActiveHabits();
+    ),
+    [habits, habitCompletions]
+  );
   
   // Split habits: as-needed habits go to their own bucket if setting allows
   const asNeededHabits = activeHabits.filter(habit => habit.frequency === "as-needed");

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Settings } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useApp } from "@/contexts/AppContext";
