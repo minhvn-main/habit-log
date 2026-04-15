@@ -9,10 +9,11 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { RotateCcw, Trash2 } from "lucide-react";
+import { RotateCcw, Trash2, Download } from "lucide-react";
 import { TodaySettings } from "@/hooks/useTodaySettings";
 import { ResetProgressModal } from "@/components/ResetProgressModal";
 import { FactoryResetModal } from "@/components/FactoryResetModal";
+import { ExportImportModal } from "@/components/ExportImportModal";
 
 interface AppSettingsModalProps {
   open: boolean;
@@ -32,6 +33,7 @@ export const AppSettingsModal = ({
 }: AppSettingsModalProps) => {
   const [resetProgressOpen, setResetProgressOpen] = useState(false);
   const [factoryResetOpen, setFactoryResetOpen] = useState(false);
+  const [exportImportOpen, setExportImportOpen] = useState(false);
 
   return (
     <>
@@ -103,6 +105,14 @@ export const AppSettingsModal = ({
                 <Button
                   variant="outline"
                   className="w-full justify-start gap-2"
+                  onClick={() => setExportImportOpen(true)}
+                >
+                  <Download size={16} />
+                  Export / Import Data
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-2"
                   onClick={() => setResetProgressOpen(true)}
                 >
                   <RotateCcw size={16} />
@@ -131,6 +141,11 @@ export const AppSettingsModal = ({
       <FactoryResetModal
         open={factoryResetOpen}
         onOpenChange={setFactoryResetOpen}
+      />
+
+      <ExportImportModal
+        open={exportImportOpen}
+        onOpenChange={setExportImportOpen}
       />
     </>
   );
