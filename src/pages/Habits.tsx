@@ -35,7 +35,13 @@ export const Habits = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sortOrder, setSortOrder] = useState<string>('creation');
+  const [sortOrder, setSortOrder] = useState<string>(() => {
+    try {
+      return localStorage.getItem("habitsSortOrder") ?? "creation";
+    } catch {
+      return "creation";
+    }
+  });
 
   type SortOption = { value: string; label: string };
   const sortOptions: SortOption[] = [
@@ -75,6 +81,10 @@ export const Habits = () => {
       }
     });
   };
+
+  useEffect(() => {
+    localStorage.setItem("habitsSortOrder", sortOrder);
+  }, [sortOrder]);
 
   // Handle edit query param from Today tab navigation
   useEffect(() => {

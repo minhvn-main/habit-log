@@ -87,7 +87,7 @@ export const CalendarPage = () => {
     const pending: Date[] = [];
 
     dateStatusMap.forEach((data, dateStr) => {
-      const date = new Date(dateStr);
+      const date = new Date(dateStr + "T00:00:00");
       
       // No entries = no indicator (but we have entries if we're here)
       if (data.completions.length === 0) return;
