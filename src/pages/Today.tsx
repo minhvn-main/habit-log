@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { Clock, Settings } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
@@ -10,8 +10,10 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { PageLayout } from "@/components/PageLayout";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { isHabitFinished } from "@/utils/habitStats";
-import { isHabitDueToday } from "@/lib/habitSchedule";
+import { isHabitDueToday, isHabitDueOnDate } from "@/lib/habitSchedule";
 import { useTodaySettings } from "@/hooks/useTodaySettings";
+import { AllDoneCard } from "@/components/AllDoneCard";
+import { calculateCurrentStreak } from "@/utils/statsCalculations";
 
 export const Today = () => {
   const { habits, habitCompletions, goals, milestones } = useApp();
@@ -54,6 +56,19 @@ export const Today = () => {
   const completedCount = todayCompletions.length;
   const totalHabits = dueToday.length;
   const completionPercentage = totalHabits > 0 ? Math.round((completedCount / totalHabits) * 100) : 0;
+
+  const streak = useMemo(
+    () => calculateCurrentStreak(habits, habitCompletions),
+    [habits, habitCompletions]
+  );
+
+  const tomorrowCount = useMemo(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return activeHabits.filter(
+      h => h.frequency !== "as-needed" && isHabitDueOnDate(h, tomorrow)
+    ).length;
+  }, [activeHabits]);
 
   // Get upcoming deadlines (including overdue)
   const getUpcomingDeadlines = () => {
@@ -108,8 +123,13 @@ export const Today = () => {
         percentage={completionPercentage}
       />
 
-      {/* Today Section */}
-      {dueToday.length > 0 && (
+      {/* All done celebration */}
+      {dueToday.length > 0 && completedCount === totalHabits && (
+        <AllDoneCard streak={streak} tomorrowCount={tomorrowCount} />
+      )}
+
+      {/* Today Section — hidden when all done */}
+      {dueToday.length > 0 && completedCount < totalHabits && (
         <CollapsibleSection
           title="Today"
           count={dueToday.length}
