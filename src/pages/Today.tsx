@@ -9,7 +9,8 @@ import { AppSettingsModal } from "@/components/AppSettingsModal";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { PageLayout } from "@/components/PageLayout";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { isHabitFinished, isHabitDueToday } from "@/utils/habitStats";
+import { isHabitFinished } from "@/utils/habitStats";
+import { isHabitDueToday } from "@/lib/habitSchedule";
 import { useTodaySettings } from "@/hooks/useTodaySettings";
 
 export const Today = () => {

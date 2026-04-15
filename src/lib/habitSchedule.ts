@@ -9,6 +9,8 @@ export function parseLocalDate(dateStr: string): Date {
   return new Date(dateStr + "T00:00:00");
 }
 
+const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
 /**
  * Single authoritative "is this habit due on this date?" function.
  * - daily: always true after startDate
@@ -27,7 +29,6 @@ export function isHabitDueOnDate(habit: Habit, date: Date): boolean {
 
   if (habit.startDate && dateStr < habit.startDate) return false;
 
-  const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const dayName = DAY_NAMES[date.getDay()];
 
   switch (habit.frequency) {
@@ -42,7 +43,7 @@ export function isHabitDueOnDate(habit: Habit, date: Date): boolean {
       if (!habit.customInterval) return false;
       const startDate = habit.startDate
         ? parseLocalDate(habit.startDate)
-        : new Date(habit.createdAt);
+        : new Date(habit.createdAt); // createdAt is a full ISO timestamp, not YYYY-MM-DD — parseLocalDate not needed
       const daysDiff = Math.floor(
         (date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
       );
@@ -51,7 +52,7 @@ export function isHabitDueOnDate(habit: Habit, date: Date): boolean {
     case "as-needed":
       return false;
     default:
-      return false;
+      return false; // unknown frequency → treat as not due (safe over-default rather than showing hidden habits)
   }
 }
 

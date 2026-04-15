@@ -1,6 +1,6 @@
 
 import { Habit, HabitCompletion } from "@/types";
-import { isHabitDueToday, parseLocalDate } from "@/lib/habitSchedule";
+import { parseLocalDate } from "@/lib/habitSchedule";
 
 export interface HabitStats {
   completionRate: number;
@@ -313,5 +313,3 @@ export const getGoalCompletionDate = (habit: Habit, completions: HabitCompletion
   return null;
 };
 
-// Re-exported from shared utility for backwards compatibility
-export { isHabitDueToday };
